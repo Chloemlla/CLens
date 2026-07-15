@@ -1,6 +1,7 @@
 package com.chloemlla.clens.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -106,28 +107,54 @@ private fun ConnectionCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(profile.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = profile.displayTarget,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val compact = maxWidth < 420.dp
+                val titleBlock: @Composable (Modifier) -> Unit = { titleModifier ->
+                    Column(modifier = titleModifier) {
+                        Text(
+                            text = profile.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = profile.displayTarget,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                val statusPill: @Composable (Modifier) -> Unit = { pillModifier ->
+                    StatusPill(
+                        modifier = pillModifier,
+                        icon = if (connected) Icons.Outlined.Link else Icons.Outlined.Cable,
+                        label = when {
+                            connected && profile.readOnly -> "只读连接"
+                            connected -> "已连接"
+                            active -> "默认"
+                            else -> "待命"
+                        },
+                        value = profile.host.ifBlank { "URI" } + if (profile.readOnly) " · RO" else "",
+                        active = connected || active,
                     )
                 }
-                StatusPill(
-                    icon = if (connected) Icons.Outlined.Link else Icons.Outlined.Cable,
-                    label = when {
-                        connected && profile.readOnly -> "只读连接"
-                        connected -> "已连接"
-                        active -> "默认"
-                        else -> "待命"
-                    },
-                    value = profile.host.ifBlank { "URI" } + if (profile.readOnly) " · RO" else "",
-                    active = connected || active,
-                )
+                if (compact) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        titleBlock(Modifier.fillMaxWidth())
+                        statusPill(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        titleBlock(Modifier.weight(1f))
+                        statusPill(Modifier)
+                    }
+                }
             }
             ScrollableActionRow {
                 OutlinedButton(onClick = onActivate, enabled = !loading) { Text("设默认") }
@@ -169,14 +196,12 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                 label = { Text("名称") },
                 enabled = !state.loading,
             )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("使用 URI")
-                Switch(
-                    checked = form.useUri,
-                    onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(useUri = checked) } },
-                    enabled = !state.loading,
-                )
-            }
+            SwitchSettingRow(
+                label = "使用 URI",
+                checked = form.useUri,
+                enabled = !state.loading,
+                onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(useUri = checked) } },
+            )
             if (form.useUri) {
                 OutlinedTextField(
                     value = form.uri,
@@ -187,39 +212,51 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     minLines = 2,
                 )
             } else {
-                OutlinedTextField(
-                    value = form.host,
-                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(host = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("主机") },
-                    enabled = !state.loading,
+                ResponsiveFieldRow(
+                    first = {
+                        OutlinedTextField(
+                            value = form.host,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(host = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("主机") },
+                            enabled = !state.loading,
+                        )
+                    },
+                    second = {
+                        OutlinedTextField(
+                            value = form.port,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(port = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("端口") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !state.loading,
+                        )
+                    },
                 )
-                OutlinedTextField(
-                    value = form.port,
-                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(port = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("端口") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    enabled = !state.loading,
-                )
-                OutlinedTextField(
-                    value = form.username,
-                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(username = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("用户名") },
-                    enabled = !state.loading,
-                )
-                OutlinedTextField(
-                    value = form.password,
-                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(password = value) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("密码") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    enabled = !state.loading,
+                ResponsiveFieldRow(
+                    first = {
+                        OutlinedTextField(
+                            value = form.username,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(username = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("用户名") },
+                            enabled = !state.loading,
+                        )
+                    },
+                    second = {
+                        OutlinedTextField(
+                            value = form.password,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(password = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("密码") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            enabled = !state.loading,
+                        )
+                    },
                 )
                 OutlinedTextField(
                     value = form.authDatabase,
@@ -245,20 +282,83 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     label = { Text("Replica Set") },
                     enabled = !state.loading,
                 )
-                FlagRow("TLS", form.tls, !state.loading) { checked ->
-                    viewModel.updateConnectionForm { it.copy(tls = checked) }
-                }
-                FlagRow("Direct Connection", form.directConnection, !state.loading) { checked ->
-                    viewModel.updateConnectionForm { it.copy(directConnection = checked) }
-                }
-                FlagRow("只读模式", form.readOnly, !state.loading) { checked ->
-                    viewModel.updateConnectionForm { it.copy(readOnly = checked) }
-                }
+                SwitchSettingRow(
+                    label = "TLS",
+                    checked = form.tls,
+                    enabled = !state.loading,
+                    onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(tls = checked) } },
+                )
+                SwitchSettingRow(
+                    label = "Direct Connection",
+                    checked = form.directConnection,
+                    enabled = !state.loading,
+                    onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(directConnection = checked) } },
+                )
+                SwitchSettingRow(
+                    label = "只读模式",
+                    checked = form.readOnly,
+                    enabled = !state.loading,
+                    onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(readOnly = checked) } },
+                )
             }
             ActionRow {
                 Button(onClick = viewModel::saveConnection, enabled = !state.loading) { Text("保存") }
                 OutlinedButton(onClick = { viewModel.testConnection() }, enabled = !state.loading) { Text("测试当前表单") }
                 OutlinedButton(onClick = viewModel::cancelEditConnection, enabled = !state.loading) { Text("取消") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwitchSettingRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+    }
+}
+
+@Composable
+private fun ResponsiveFieldRow(
+    first: @Composable () -> Unit,
+    second: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 480.dp
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                first()
+                second()
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) { first() }
+                Column(modifier = Modifier.weight(1f)) { second() }
             }
         }
     }
