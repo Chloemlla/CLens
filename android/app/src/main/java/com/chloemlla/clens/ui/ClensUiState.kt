@@ -5,6 +5,9 @@ import com.chloemlla.clens.core.mongo.DatabaseSummary
 import com.chloemlla.clens.core.mongo.IndexSummary
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.ServerOverview
+import com.chloemlla.clens.core.mongo.GridFsFileSummary
+import com.chloemlla.clens.core.mongo.MongoUserSummary
+import com.chloemlla.clens.core.mongo.MongoRoleSummary
 
 enum class ResultViewMode {
     Json,
@@ -17,6 +20,10 @@ enum class DestructiveAction {
     DeleteMany,
     DropIndex,
     CompactCollection,
+    DropUser,
+    DropRole,
+    DropGridFsFile,
+    ImportDropCollection,
 }
 
 data class PendingDestructiveAction(
@@ -30,6 +37,7 @@ enum class ClensTab(val label: String) {
     Browse("浏览"),
     Query("查询"),
     Admin("管理"),
+    Advanced("高级"),
 }
 
 data class ConnectionFormState(
@@ -99,6 +107,32 @@ data class ClensUiState(
     val pendingDestructive: PendingDestructiveAction? = null,
     val destructiveConfirmInput: String = "",
     val cleartextWarning: String? = null,
+    // Advanced tab
+    val gridFsBucket: String = "fs",
+    val gridFsFiles: List<GridFsFileSummary> = emptyList(),
+    val gridFsUploadName: String = "upload.txt",
+    val gridFsUploadContent: String = "",
+    val gridFsDownloadContent: String = "",
+    val gridFsError: String? = null,
+    val changeStreamRunning: Boolean = false,
+    val changeStreamFilterHint: String = "",
+    val changeStreamEvents: List<String> = emptyList(),
+    val changeStreamError: String? = null,
+    val authDatabaseInput: String = "admin",
+    val detailedUsers: List<MongoUserSummary> = emptyList(),
+    val detailedUsersError: String? = null,
+    val createUserName: String = "",
+    val createUserPassword: String = "",
+    val createUserRolesJson: String = "[{\"role\":\"readWrite\",\"db\":\"admin\"}]",
+    val roles: List<MongoRoleSummary> = emptyList(),
+    val rolesError: String? = null,
+    val createRoleName: String = "",
+    val createRolePrivilegesJson: String = "[]",
+    val createRoleRolesJson: String = "[]",
+    val importJson: String = "[]",
+    val importDropBefore: Boolean = false,
+    val exportLimit: String = "200",
+    val exportJson: String = "",
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,

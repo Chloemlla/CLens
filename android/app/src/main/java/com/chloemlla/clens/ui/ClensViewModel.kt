@@ -32,6 +32,7 @@ class ClensViewModel(
     private val browse = BrowseController(ctx)
     private val query = QueryController(ctx)
     private val admin = AdminController(ctx)
+    private val advanced = AdvancedController(ctx)
 
     init {
         ctx.refreshProfiles(status = "连接配置已加载")
@@ -42,6 +43,9 @@ class ClensViewModel(
         when (tab) {
             ClensTab.Browse -> if (_state.value.isConnected && _state.value.databases.isEmpty()) browse.refreshDatabases()
             ClensTab.Admin -> if (_state.value.isConnected) admin.refreshServerOverview()
+            ClensTab.Advanced -> if (_state.value.isConnected) {
+                // no-op auto load; user triggers refresh actions
+            }
             else -> Unit
         }
     }
@@ -61,7 +65,10 @@ class ClensViewModel(
     fun connect(profile: MongoConnectionProfile? = null) = connections.connect(profile) {
         browse.refreshDatabases(silent = true)
     }
-    fun disconnect() = connections.disconnect()
+    fun disconnect() {
+        advanced.stopChangeStream()
+        connections.disconnect()
+    }
 
     fun updateSelectedDatabase(value: String) = browse.updateSelectedDatabase(value)
     fun updateSelectedCollection(value: String) = browse.updateSelectedCollection(value)
@@ -110,6 +117,32 @@ class ClensViewModel(
         browse.updateText(field, value)
         query.updateText(field, value)
         admin.updateText(field, value)
+        advanced.updateText(field, value)
+    }
+
+
+    fun refreshGridFs() = advanced.refreshGridFs()
+    fun uploadGridFs() = advanced.uploadGridFs()
+    fun downloadGridFs(fileId: String) = advanced.downloadGridFs(fileId)
+    fun requestDeleteGridFs(fileId: String) = advanced.requestDeleteGridFs(fileId)
+    fun deleteGridFsConfirmed() = advanced.deleteGridFsConfirmed()
+    fun startChangeStream() = advanced.startChangeStream(viewModelScope)
+    fun stopChangeStream() = advanced.stopChangeStream()
+    fun refreshUsersAndRoles() = advanced.refreshUsersAndRoles()
+    fun createUser() = advanced.createUser()
+    fun requestDropUser(user: String) = advanced.requestDropUser(user)
+    fun dropUserConfirmed() = advanced.dropUserConfirmed()
+    fun createRole() = advanced.createRole()
+    fun requestDropRole(role: String) = advanced.requestDropRole(role)
+    fun dropRoleConfirmed() = advanced.dropRoleConfirmed()
+    fun setImportDropBefore(checked: Boolean) = advanced.setImportDropBefore(checked)
+    fun requestImport() = advanced.requestImport()
+    fun importConfirmed() = advanced.importConfirmed()
+    fun exportCollection() = advanced.exportCollection()
+
+    override fun onCleared() {
+        advanced.onCleared()
+        super.onCleared()
     }
 
     fun updateDestructiveConfirmInput(value: String) {
@@ -134,6 +167,10 @@ class ClensViewModel(
             DestructiveAction.DeleteMany -> browse.deleteManyConfirmed()
             DestructiveAction.DropIndex -> admin.dropIndexConfirmed()
             DestructiveAction.CompactCollection -> browse.compactCollectionConfirmed()
+            DestructiveAction.DropUser -> advanced.dropUserConfirmed()
+            DestructiveAction.DropRole -> advanced.dropRoleConfirmed()
+            DestructiveAction.DropGridFsFile -> advanced.deleteGridFsConfirmed()
+            DestructiveAction.ImportDropCollection -> advanced.importConfirmed()
         }
     }
 
@@ -153,6 +190,18 @@ class ClensViewModel(
         IndexKeys,
         IndexName,
         IndexExpire,
+        GridFsBucket,
+        GridFsUploadName,
+        GridFsUploadContent,
+        AuthDatabaseInput,
+        CreateUserName,
+        CreateUserPassword,
+        CreateUserRolesJson,
+        CreateRoleName,
+        CreateRolePrivilegesJson,
+        CreateRoleRolesJson,
+        ImportJson,
+        ExportLimit,
     }
 
     class Factory(

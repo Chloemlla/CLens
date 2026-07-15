@@ -80,3 +80,12 @@ Gradle 9.5.1 with AGP 8.13.2 may write problems-report.html entries such as:
 
 These warnings are emitted by AGP plugin code (com.android.internal.application), not by CLens uild.gradle.kts dependencies (which already use single-string notation). They are safe to ignore for now and become hard errors only on Gradle 10 unless AGP ships a fix first. Keep AGP/Gradle pins aligned with Synapse-Client unless deliberately upgrading the toolchain.
 
+## Advanced tab
+
+The **高级** tab adds:
+
+* GridFS list/upload(text)/download(text)/delete for bucket `fs` (customizable)
+* Change Stream watch for the currently selected collection (requires replica set / sharded cluster)
+* User/role create & drop (best-effort; privilege errors are shown)
+* Import JSON array into the selected collection and export collection JSON with limit
+

@@ -87,6 +87,27 @@ data class ConnectionTestResult(
     val message: String,
 )
 
+data class GridFsFileSummary(
+    val id: String,
+    val filename: String,
+    val length: Long,
+    val uploadDate: String = "",
+    val contentType: String = "",
+)
+
+data class MongoUserSummary(
+    val user: String,
+    val db: String,
+    val rolesJson: String,
+)
+
+data class MongoRoleSummary(
+    val role: String,
+    val db: String,
+    val rolesJson: String,
+    val privilegesJson: String,
+)
+
 sealed class MongoAdminException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     class Validation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)
     class Operation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)

@@ -1,6 +1,17 @@
 package com.chloemlla.clens.core.mongo
 
 import com.mongodb.MongoNamespace
+import com.mongodb.client.model.Filters
+import com.mongodb.client.model.Sorts
+import com.mongodb.client.model.changestream.FullDocument
+import java.nio.charset.StandardCharsets
+import java.util.Date
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import org.bson.types.ObjectId
+import org.bson.types.Binary
 import com.mongodb.client.model.IndexOptions
 import com.mongodb.client.model.RenameCollectionOptions
 import java.util.concurrent.TimeUnit
@@ -385,6 +396,304 @@ class MongoAdminRepository(
             .getDatabase("admin")
             .runCommand(Document("currentOp", 1))
         pretty(result)
+    }
+
+
+
+    suspend fun listGridFsFiles(database: String, bucketName: String = "fs"): List<GridFsFileSummary> =
+        withContext(Dispatchers.IO) {
+            val bucket = bucketName.ifBlank { "fs" }
+            val files = sessionManager.requireClient()
+                .getDatabase(requireName(database, "数据库"))
+                .getCollection<Document>("$bucket.files")
+            files.find()
+                .sort(Sorts.descending("uploadDate"))
+                .limit(200)
+                .toList()
+                .map { doc ->
+                    GridFsFileSummary(
+                        id = doc["_id"]?.toString().orEmpty(),
+                        filename = doc.stringValue("filename"),
+                        length = doc.numberLong("length") ?: 0L,
+                        uploadDate = doc["uploadDate"]?.toString().orEmpty(),
+                        contentType = (doc["metadata"] as? Document)?.stringValue("contentType").orEmpty(),
+                    )
+                }
+        }
+
+    suspend fun uploadGridFsText(
+        database: String,
+        filename: String,
+        content: String,
+        bucketName: String = "fs",
+    ): String = withContext(Dispatchers.IO) {
+        val bucket = bucketName.ifBlank { "fs" }
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        val files = db.getCollection<Document>("$bucket.files")
+        val chunks = db.getCollection<Document>("$bucket.chunks")
+        val bytes = content.toByteArray(StandardCharsets.UTF_8)
+        val id = ObjectId()
+        val chunkSize = 255 * 1024
+        val fileDoc = Document(
+            mapOf(
+                "_id" to id,
+                "filename" to requireName(filename, "文件名"),
+                "length" to bytes.size.toLong(),
+                "chunkSize" to chunkSize,
+                "uploadDate" to Date(),
+                "metadata" to Document("contentType", "text/plain"),
+            ),
+        )
+        files.insertOne(fileDoc)
+        var n = 0
+        var offset = 0
+        while (offset < bytes.size) {
+            val end = minOf(offset + chunkSize, bytes.size)
+            val slice = bytes.copyOfRange(offset, end)
+            chunks.insertOne(
+                Document(
+                    mapOf(
+                        "files_id" to id,
+                        "n" to n,
+                        "data" to Binary(slice),
+                    ),
+                ),
+            )
+            n += 1
+            offset = end
+        }
+        id.toString()
+    }
+
+    suspend fun downloadGridFsText(
+        database: String,
+        fileId: String,
+        bucketName: String = "fs",
+        maxBytes: Int = 512 * 1024,
+    ): String = withContext(Dispatchers.IO) {
+        val bucket = bucketName.ifBlank { "fs" }
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        val files = db.getCollection<Document>("$bucket.files")
+        val chunks = db.getCollection<Document>("$bucket.chunks")
+        val objectId = parseObjectId(fileId)
+        val file = files.find(Filters.eq("_id", objectId)).toList().firstOrNull()
+            ?: throw MongoAdminException.Validation("未找到 GridFS 文件。")
+        val length = file.numberLong("length") ?: 0L
+        if (length > maxBytes) {
+            throw MongoAdminException.Validation("文件过大（>$maxBytes bytes），请使用桌面工具下载。")
+        }
+        val ordered = chunks.find(Filters.eq("files_id", objectId)).sort(Sorts.ascending("n")).toList()
+        val out = java.io.ByteArrayOutputStream()
+        ordered.forEach { chunk ->
+            val data = chunk["data"]
+            when (data) {
+                is ByteArray -> out.write(data)
+                is org.bson.types.Binary -> out.write(data.data)
+                else -> Unit
+            }
+        }
+        String(out.toByteArray(), StandardCharsets.UTF_8)
+    }
+
+    suspend fun deleteGridFsFile(
+        database: String,
+        fileId: String,
+        bucketName: String = "fs",
+    ): Unit = withContext(Dispatchers.IO) {
+        val bucket = bucketName.ifBlank { "fs" }
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        val objectId = parseObjectId(fileId)
+        db.getCollection<Document>("$bucket.files").deleteOne(Filters.eq("_id", objectId))
+        db.getCollection<Document>("$bucket.chunks").deleteMany(Filters.eq("files_id", objectId))
+    }
+
+    fun openChangeStream(
+        scope: CoroutineScope,
+        database: String,
+        collectionName: String,
+        onEvent: (String) -> Unit,
+        onError: (String) -> Unit,
+        onClosed: () -> Unit,
+    ): Job {
+        return scope.launch(Dispatchers.IO) {
+            try {
+                val coll = collection(database, collectionName)
+                coll.watch<Document>()
+                    .fullDocument(FullDocument.UPDATE_LOOKUP)
+                    .collect { change ->
+                        val payload = Document().apply {
+                            put("operationType", change.operationType?.toString())
+                            put("documentKey", change.documentKey)
+                            put("ns", Document("db", database).append("coll", collectionName))
+                            change.fullDocument?.let { put("fullDocument", it) }
+                        }
+                        onEvent(pretty(payload))
+                    }
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    onClosed()
+                    throw error
+                }
+                onError(error.message ?: "Change Stream 失败（需要副本集/分片集群）")
+                onClosed()
+            }
+        }
+    }
+
+    suspend fun listUsersDetailed(authDatabase: String = "admin"): List<MongoUserSummary> =
+        withContext(Dispatchers.IO) {
+            val result = sessionManager.requireClient()
+                .getDatabase(requireName(authDatabase, "认证库"))
+                .runCommand(Document("usersInfo", 1))
+            val users = result.getList("users", Document::class.java).orEmpty()
+            users.mapNotNull { doc ->
+                val user = doc.stringValue("user")
+                if (user.isBlank()) {
+                    null
+                } else {
+                    MongoUserSummary(
+                        user = user,
+                        db = doc.stringValue("db", authDatabase),
+                        rolesJson = pretty(Document("roles", doc["roles"])),
+                    )
+                }
+            }.sortedBy { it.user }
+        }
+
+    suspend fun createUser(
+        authDatabase: String,
+        user: String,
+        password: String,
+        rolesJson: String,
+    ): Unit = withContext(Dispatchers.IO) {
+        if (password.isBlank()) {
+            throw MongoAdminException.Validation("密码不能为空。")
+        }
+        val rolesPayload = normalizeArrayField(rolesJson, "roles")
+        val command = Document(
+            mapOf(
+                "createUser" to requireName(user, "用户名"),
+                "pwd" to password,
+                "roles" to rolesPayload,
+            ),
+        )
+        sessionManager.requireClient()
+            .getDatabase(requireName(authDatabase, "认证库"))
+            .runCommand(command)
+    }
+
+    suspend fun dropUser(authDatabase: String, user: String): Unit = withContext(Dispatchers.IO) {
+        sessionManager.requireClient()
+            .getDatabase(requireName(authDatabase, "认证库"))
+            .runCommand(Document("dropUser", requireName(user, "用户名")))
+    }
+
+    suspend fun listRoles(authDatabase: String = "admin"): List<MongoRoleSummary> =
+        withContext(Dispatchers.IO) {
+            val result = sessionManager.requireClient()
+                .getDatabase(requireName(authDatabase, "认证库"))
+                .runCommand(
+                    Document("rolesInfo", 1)
+                        .append("showPrivileges", true)
+                        .append("showBuiltinRoles", false),
+                )
+            val roles = result.getList("roles", Document::class.java).orEmpty()
+            roles.mapNotNull { doc ->
+                val role = doc.stringValue("role")
+                if (role.isBlank()) {
+                    null
+                } else {
+                    MongoRoleSummary(
+                        role = role,
+                        db = doc.stringValue("db", authDatabase),
+                        rolesJson = pretty(Document("roles", doc["roles"])),
+                        privilegesJson = pretty(Document("privileges", doc["privileges"])),
+                    )
+                }
+            }.sortedBy { it.role }
+        }
+
+    suspend fun createRole(
+        authDatabase: String,
+        role: String,
+        privilegesJson: String,
+        rolesJson: String,
+    ): Unit = withContext(Dispatchers.IO) {
+        val privileges = normalizeArrayField(privilegesJson, "privileges")
+        val roles = normalizeArrayField(rolesJson, "roles")
+        val command = Document(
+            mapOf(
+                "createRole" to requireName(role, "角色名"),
+                "privileges" to privileges,
+                "roles" to roles,
+            ),
+        )
+        sessionManager.requireClient()
+            .getDatabase(requireName(authDatabase, "认证库"))
+            .runCommand(command)
+    }
+
+    suspend fun dropRole(authDatabase: String, role: String): Unit = withContext(Dispatchers.IO) {
+        sessionManager.requireClient()
+            .getDatabase(requireName(authDatabase, "认证库"))
+            .runCommand(Document("dropRole", requireName(role, "角色名")))
+    }
+
+    suspend fun exportDocuments(
+        database: String,
+        collectionName: String,
+        filterJson: String = "{}",
+        limit: Int = 200,
+    ): String = withContext(Dispatchers.IO) {
+        val page = findDocuments(
+            database = database,
+            collection = collectionName,
+            filterJson = filterJson,
+            sortJson = "{}",
+            projectionJson = "{}",
+            limit = limit.coerceIn(1, 1000),
+            skip = 0,
+        )
+        val array = org.json.JSONArray()
+        page.documents.forEach { raw ->
+            runCatching { array.put(org.json.JSONObject(raw)) }.getOrElse { array.put(raw) }
+        }
+        array.toString(2)
+    }
+
+    suspend fun importDocuments(
+        database: String,
+        collectionName: String,
+        jsonArrayOrDocs: String,
+        dropBeforeImport: Boolean,
+    ): Int = withContext(Dispatchers.IO) {
+        if (dropBeforeImport) {
+            runCatching { dropCollection(database, collectionName) }
+            createCollection(database, collectionName)
+        }
+        val payload = jsonArrayOrDocs.trim().ifBlank { "[]" }
+        insertDocuments(database, collectionName, payload)
+    }
+
+    private fun parseObjectId(raw: String): ObjectId {
+        val trimmed = raw.trim()
+        if (!ObjectId.isValid(trimmed)) {
+            throw MongoAdminException.Validation("无效的 ObjectId。")
+        }
+        return ObjectId(trimmed)
+    }
+
+    private fun normalizeArrayField(raw: String, fieldName: String): Any {
+        val trimmed = raw.trim().ifBlank {
+            return emptyList<Any>()
+        }
+        val wrapped = if (trimmed.startsWith("[")) {
+            "{\"$fieldName\":$trimmed}"
+        } else {
+            trimmed
+        }
+        val doc = parseDocument(wrapped, fieldName)
+        return doc[fieldName] ?: emptyList<Any>()
     }
 
     private fun collection(database: String, collection: String) =

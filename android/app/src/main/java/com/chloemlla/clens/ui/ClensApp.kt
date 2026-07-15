@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
@@ -106,6 +107,7 @@ fun ClensApp(viewModel: ClensViewModel) {
                     ClensTab.Browse -> BrowsePanel(state, viewModel)
                     ClensTab.Query -> QueryPanel(state, viewModel)
                     ClensTab.Admin -> AdminPanel(state, viewModel)
+                    ClensTab.Advanced -> AdvancedPanel(state, viewModel)
                 }
             }
         }
@@ -166,4 +168,5 @@ private fun ClensTab.icon(): ImageVector = when (this) {
     ClensTab.Browse -> Icons.Outlined.TravelExplore
     ClensTab.Query -> Icons.AutoMirrored.Outlined.ManageSearch
     ClensTab.Admin -> Icons.Outlined.AdminPanelSettings
+    ClensTab.Advanced -> Icons.Outlined.Build
 }
