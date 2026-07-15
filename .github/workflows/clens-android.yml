@@ -63,6 +63,9 @@ jobs:
           echo "CLENS_SHORT_HASH=${SHORT_HASH}" >> "$GITHUB_ENV"
           echo "CLENS_ANDROID_RELEASE_VERSION=${VERSION_NAME}-${SHORT_HASH}" >> "$GITHUB_ENV"
 
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
       - name: Run unit tests
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
@@ -164,6 +167,9 @@ jobs:
           fi
 
           echo "KEYSTORE_FILE=$keystore_file" >> "$GITHUB_ENV"
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
 
       - name: Build signed release APK
         env:
