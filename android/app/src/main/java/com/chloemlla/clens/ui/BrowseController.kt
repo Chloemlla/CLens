@@ -14,6 +14,7 @@ class BrowseController(
             it.copy(
                 selectedDatabase = value,
                 selectedCollection = "",
+                collectionSearchQuery = "",
                 collections = emptyList(),
                 documents = emptyList(),
                 indexes = emptyList(),
@@ -61,6 +62,8 @@ class BrowseController(
                 ClensViewModel.Field.ValidatorJsonInput -> current.copy(validatorJsonInput = value)
                 ClensViewModel.Field.ValidationLevelInput -> current.copy(validationLevelInput = value)
                 ClensViewModel.Field.ValidationActionInput -> current.copy(validationActionInput = value)
+                ClensViewModel.Field.DatabaseSearch -> current.copy(databaseSearchQuery = value)
+                ClensViewModel.Field.CollectionSearch -> current.copy(collectionSearchQuery = value)
                 else -> current
             }
         }

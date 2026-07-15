@@ -43,6 +43,13 @@ class LocalAppStore(context: Context) {
         prefs.edit { putString(KEY_AUDIT_LOG, "[]") }
     }
 
+    fun isVerticalCatalogListsEnabled(): Boolean =
+        prefs.getBoolean(KEY_VERTICAL_CATALOG_LISTS, false)
+
+    fun setVerticalCatalogListsEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_VERTICAL_CATALOG_LISTS, enabled) }
+    }
+
     private fun writeHistory(items: List<QueryHistoryEntry>) {
         val array = JSONArray()
         items.forEach { item ->
@@ -121,6 +128,7 @@ class LocalAppStore(context: Context) {
         const val PREFS = "clens_local_app_store"
         const val KEY_QUERY_HISTORY = "query_history_json"
         const val KEY_AUDIT_LOG = "audit_log_json"
+        const val KEY_VERTICAL_CATALOG_LISTS = "vertical_catalog_lists"
         const val MAX_HISTORY = 30
         const val MAX_AUDIT = 100
     }

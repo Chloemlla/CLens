@@ -43,6 +43,7 @@ enum class ClensTab(val label: String) {
     Query("查询"),
     Admin("管理"),
     Advanced("高级"),
+    Settings("设置"),
 }
 
 data class ConnectionFormState(
@@ -149,6 +150,9 @@ data class ClensUiState(
     val validationLevelInput: String = "strict",
     val validationActionInput: String = "error",
     val connectedReadOnly: Boolean = false,
+    val verticalCatalogLists: Boolean = false,
+    val databaseSearchQuery: String = "",
+    val collectionSearchQuery: String = "",
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,

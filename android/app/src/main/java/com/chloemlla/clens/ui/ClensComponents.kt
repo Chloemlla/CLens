@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -424,6 +425,158 @@ internal fun ChipSelector(label: String, values: List<String>, selected: String,
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 values.forEach { value ->
                     FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(value) })
+                }
+            }
+        }
+    }
+}
+
+data class CatalogOption(
+    val id: String,
+    val title: String,
+    val subtitle: String? = null,
+)
+
+@Composable
+internal fun SearchableCatalogSelector(
+    label: String,
+    options: List<CatalogOption>,
+    selectedId: String,
+    searchQuery: String,
+    vertical: Boolean,
+    enabled: Boolean,
+    emptyText: String = "暂无数据",
+    searchPlaceholder: String = "搜索",
+    onSearchQueryChange: (String) -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val query = searchQuery.trim()
+    val filtered = if (query.isBlank()) {
+        options
+    } else {
+        options.filter { option ->
+            option.id.contains(query, ignoreCase = true) ||
+                option.title.contains(query, ignoreCase = true) ||
+                option.subtitle.orEmpty().contains(query, ignoreCase = true)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            enabled = enabled,
+            label = { Text(searchPlaceholder) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = null,
+                )
+            },
+            trailingIcon = {
+                if (searchQuery.isNotBlank()) {
+                    IconButton(onClick = { onSearchQueryChange("") }, enabled = enabled) {
+                        Icon(Icons.Outlined.Close, contentDescription = "清除搜索")
+                    }
+                }
+            },
+        )
+        Text(
+            text = "显示 " + filtered.size + " / " + options.size,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        when {
+            options.isEmpty() -> {
+                Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            filtered.isEmpty() -> {
+                Text("没有匹配项", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            vertical -> {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        filtered.forEach { option ->
+                            val selected = option.id == selectedId
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = enabled) { onSelect(option.id) },
+                                shape = MaterialTheme.shapes.small,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    },
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = option.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (!option.subtitle.isNullOrBlank()) {
+                                        Text(
+                                            text = option.subtitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    filtered.forEach { option ->
+                        FilterChip(
+                            selected = option.id == selectedId,
+                            onClick = { onSelect(option.id) },
+                            enabled = enabled,
+                            label = {
+                                Text(
+                                    text = option.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }

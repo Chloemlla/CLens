@@ -23,6 +23,7 @@ class ClensSessionContext(
             it.copy(
                 queryHistory = localStore.listQueryHistory(),
                 auditLog = localStore.listAuditLog(),
+                verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
             )
         }
     }

@@ -73,10 +73,26 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             ) { Text("删除当前库") }
         }
 
-        ChipSelector(
+        SearchableCatalogSelector(
             label = "数据库",
-            values = state.databases.map { it.name },
-            selected = state.selectedDatabase,
+            options = state.databases.map { db ->
+                CatalogOption(
+                    id = db.name,
+                    title = db.name,
+                    subtitle = buildList {
+                        db.collections?.let { add(it.toString() + " collections") }
+                        db.sizeOnDisk?.let { add("size " + it) }
+                        if (db.empty) add("empty")
+                    }.takeIf { it.isNotEmpty() }?.joinToString(" · "),
+                )
+            },
+            selectedId = state.selectedDatabase,
+            searchQuery = state.databaseSearchQuery,
+            vertical = state.verticalCatalogLists,
+            enabled = !state.loading,
+            emptyText = "还没有数据库",
+            searchPlaceholder = "搜索数据库",
+            onSearchQueryChange = { viewModel.updateText(ClensViewModel.Field.DatabaseSearch, it) },
             onSelect = viewModel::updateSelectedDatabase,
         )
 
@@ -116,18 +132,28 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
         ) { Text("重命名集合") }
 
-        ChipSelector(
+        SearchableCatalogSelector(
             label = "集合",
-            values = state.collections.map { coll ->
-                if (coll.type.equals("view", ignoreCase = true)) coll.name + " [view]" else coll.name
+            options = state.collections.map { coll ->
+                val isView = coll.type.equals("view", ignoreCase = true)
+                CatalogOption(
+                    id = coll.name,
+                    title = if (isView) coll.name + " [view]" else coll.name,
+                    subtitle = buildList {
+                        add(coll.type)
+                        coll.count?.let { add("count " + it) }
+                        coll.size?.let { add("size " + it) }
+                    }.joinToString(" · "),
+                )
             },
-            selected = state.collections.firstOrNull { it.name == state.selectedCollection }?.let {
-                if (it.type.equals("view", ignoreCase = true)) it.name + " [view]" else it.name
-            }.orEmpty(),
-            onSelect = { label ->
-                val name = label.removeSuffix(" [view]")
-                viewModel.updateSelectedCollection(name)
-            },
+            selectedId = state.selectedCollection,
+            searchQuery = state.collectionSearchQuery,
+            vertical = state.verticalCatalogLists,
+            enabled = !state.loading && state.selectedDatabase.isNotBlank(),
+            emptyText = if (state.selectedDatabase.isBlank()) "先选择数据库" else "当前库没有集合",
+            searchPlaceholder = "搜索集合",
+            onSearchQueryChange = { viewModel.updateText(ClensViewModel.Field.CollectionSearch, it) },
+            onSelect = viewModel::updateSelectedCollection,
         )
 
         if (state.connectedReadOnly) {

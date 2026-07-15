@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
 
 class ClensViewModel(
     connectionStore: MongoConnectionStore,
-    localStore: LocalAppStore,
+    private val localStore: LocalAppStore,
     sessionManager: MongoSessionManager,
     repository: MongoAdminRepository,
 ) : ViewModel() {
@@ -109,6 +109,16 @@ class ClensViewModel(
     fun setQueryModeAggregate(enabled: Boolean) = query.setQueryModeAggregate(enabled)
     fun runQuery(withExplain: Boolean = false) = query.runQuery(withExplain)
     fun explainAggregate() = query.explainAggregate()
+
+    fun setVerticalCatalogListsEnabled(enabled: Boolean) {
+        localStore.setVerticalCatalogListsEnabled(enabled)
+        _state.update {
+            it.copy(
+                verticalCatalogLists = enabled,
+                status = if (enabled) "已切换为竖排列表" else "已切换为横向标签",
+            )
+        }
+    }
 
     fun setIndexFlags(unique: Boolean? = null, sparse: Boolean? = null) = admin.setIndexFlags(unique, sparse)
     fun refreshIndexes() = admin.refreshIndexes()
@@ -219,6 +229,8 @@ class ClensViewModel(
         ValidatorJsonInput,
         ValidationLevelInput,
         ValidationActionInput,
+        DatabaseSearch,
+        CollectionSearch,
     }
 
     class Factory(
