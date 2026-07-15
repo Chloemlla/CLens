@@ -114,6 +114,8 @@ android {
                 // MongoDB Java driver ships GraalVM native-image metadata that collides across jars.
                 "META-INF/native-image/**",
                 "META-INF/versions/**",
+                "META-INF/services/io.micrometer.context.ContextAccessor",
+                "META-INF/services/reactor.blockhound.integration.BlockHoundIntegration",
             )
         }
     }

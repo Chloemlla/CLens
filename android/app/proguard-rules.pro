@@ -47,3 +47,18 @@
 # Compose and lifecycle warnings are dependency-internal.
 -dontwarn androidx.compose.**
 -dontwarn androidx.lifecycle.**
+
+# AndroidX Security Crypto depends on Tink; annotation-only and optional API refs are not on Android.
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn javax.annotation.concurrent.**
+
+# MongoDB reactive stack may pull optional Reactor / Micrometer / BlockHound service metadata.
+# These classes are not required for the coroutine driver path used by CLens.
+-dontwarn reactor.**
+-dontwarn io.micrometer.**
+-dontwarn reactor.blockhound.**
+-dontwarn reactor.blockhound.integration.**
+
