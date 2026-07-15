@@ -21,6 +21,7 @@ class MongoSessionManager {
 
     suspend fun connect(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
         val uri = MongoUriBuilder.build(profile)
+        ensureMongoAuthClassesLoaded()
         val client = createClient(uri)
         try {
             val started = System.nanoTime()
@@ -42,6 +43,7 @@ class MongoSessionManager {
 
     suspend fun test(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
         val uri = MongoUriBuilder.build(profile)
+        ensureMongoAuthClassesLoaded()
         val client = createClient(uri)
         try {
             val started = System.nanoTime()
@@ -91,6 +93,30 @@ class MongoSessionManager {
         return MongoClient.create(settings)
     }
 
+    /**
+     * Force-load Mongo SCRAM/SASL implementation classes on the coroutine worker
+     * before opening sockets. The driver resolves these from async NIO completion
+     * threads where an uncaught [NoClassDefFoundError] would kill the process
+     * outside [ClensActionRunner]'s try/catch.
+     *
+     * Class.forName also gives R8 a hard reflective keep root for nested
+     * authenticator classes under full mode.
+     */
+    private fun ensureMongoAuthClassesLoaded() {
+        for (className in REQUIRED_MONGO_AUTH_CLASSES) {
+            try {
+                Class.forName(className)
+            } catch (error: Throwable) {
+                when (error) {
+                    is ClassNotFoundException, is NoClassDefFoundError, is ExceptionInInitializerError -> {
+                        throw wrapConnectionFailure("Mongo 认证组件加载失败", error)
+                    }
+                    else -> throw error
+                }
+            }
+        }
+    }
+
     private suspend fun readVersion(client: MongoClient): String? {
         return runCatching {
             val buildInfo = client.getDatabase("admin").runCommand(Document("buildInfo", 1))
@@ -117,5 +143,13 @@ class MongoSessionManager {
         }
         val cause = error as? Exception ?: Exception(detail, error)
         return MongoAdminException.Operation(detail, cause)
+    }
+
+    private companion object {
+        val REQUIRED_MONGO_AUTH_CLASSES = listOf(
+            "com.mongodb.internal.connection.DefaultAuthenticator",
+            "com.mongodb.internal.connection.SaslAuthenticator",
+            "com.mongodb.internal.connection.SaslAuthenticator\$SaslClientImpl",
+        )
     }
 }

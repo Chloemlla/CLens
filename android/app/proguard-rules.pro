@@ -47,6 +47,9 @@
 -keep class com.mongodb.internal.connection.**Authenticator* { *; }
 -keep class com.mongodb.internal.connection.**Authenticator$* { *; }
 -keep class com.mongodb.internal.authentication.** { *; }
+-keepnames class com.mongodb.internal.connection.SaslAuthenticator
+-keepnames class com.mongodb.internal.connection.SaslAuthenticator$*
+-keepnames class com.mongodb.internal.connection.DefaultAuthenticator
 -dontwarn com.mongodb.**
 -dontwarn org.bson.**
 -dontwarn com.mongodb.internal.connection.netty.**

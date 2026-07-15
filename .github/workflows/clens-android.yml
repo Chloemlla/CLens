@@ -103,6 +103,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew assembleProductionRelease --no-daemon
 
+      - name: Verify Mongo SASL classes retained after R8
+        working-directory: .
+        run: python3 .github/scripts/verify-mongo-sasl-retention.py --root android
+
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -210,6 +214,10 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew assembleProductionRelease --no-daemon
+
+      - name: Verify Mongo SASL classes retained after R8
+        working-directory: .
+        run: python3 .github/scripts/verify-mongo-sasl-retention.py --root android
 
       - name: Prepare release assets
         run: |

@@ -101,6 +101,8 @@ GitHub Packages resolution for `lumen-crash` expects either:
 * ProGuard keeps the full `com.mongodb.**` surface, with explicit nested keep for `SaslAuthenticator$*`. Do **not** reintroduce a negation filter that excludes `com.mongodb.internal.connection.netty.**`: that filter previously correlated with release-only `NoClassDefFoundError: SaslAuthenticator$SaslClientImpl` during SCRAM handshake.
 * Optional Netty transport may still produce a benign R8 type-check warning at minify time; that is preferred over shipping a broken auth path.
 * Optional Reactor / Micrometer / BlockHound service metadata is excluded from packaging and silenced with `-dontwarn`.
+* CI runs `.github/scripts/verify-mongo-sasl-retention.py` after `assembleProductionRelease` and fails the build if `SaslAuthenticator$SaslClientImpl` is absent from the release APK/DEX.
+* `MongoSessionManager` preloads SCRAM classes on the coroutine worker before opening sockets, so a linkage failure becomes a UI error instead of an uncaught async-thread crash.
 
 ## Cleartext MongoDB
 
