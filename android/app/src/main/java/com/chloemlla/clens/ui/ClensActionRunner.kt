@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ClensActionRunner(
     private val scope: CoroutineScope,
@@ -20,13 +21,11 @@ class ClensActionRunner(
         block: suspend () -> Unit,
     ) {
         scope.launch {
-            if (!actionMutex.tryLock()) {
-                state.update {
-                    it.copy(error = "已有操作进行中，请等待完成后再试。")
-                }
-                return@launch
-            }
-            try {
+            // Serialize all UI actions on one mutex.
+            // Nested follow-up actions (for example connect -> refreshDatabases) launch a new
+            // coroutine and wait here instead of failing with tryLock. Because the nested
+            // launcher does not hold the lock itself, this queues rather than deadlocks.
+            actionMutex.withLock {
                 state.update {
                     it.copy(
                         loading = true,
@@ -52,8 +51,6 @@ class ClensActionRunner(
                 } finally {
                     state.update { it.copy(loading = false) }
                 }
-            } finally {
-                actionMutex.unlock()
             }
         }
     }

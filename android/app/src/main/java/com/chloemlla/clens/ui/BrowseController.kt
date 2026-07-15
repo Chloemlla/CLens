@@ -73,20 +73,7 @@ class BrowseController(
 
     fun refreshDatabases(silent: Boolean = false) {
         ctx.actions.run("刷新数据库", silent = silent) {
-            val databases = repository.listDatabases()
-            val selected = state.value.selectedDatabase
-                .takeIf { current -> databases.any { it.name == current } }
-                ?: databases.firstOrNull()?.name.orEmpty()
-            state.update {
-                it.copy(
-                    databases = databases,
-                    selectedDatabase = selected,
-                    status = if (silent) it.status else ("已加载 " + databases.size + " 个数据库"),
-                )
-            }
-            if (selected.isNotBlank()) {
-                refreshCollections(silent = true)
-            }
+            loadDatabases(silent = silent)
         }
     }
 
@@ -97,7 +84,7 @@ class BrowseController(
             val name = state.value.newDatabaseName
             repository.createDatabase(name)
             state.update { it.copy(newDatabaseName = "", selectedDatabase = name.trim()) }
-            refreshDatabases(silent = true)
+            loadDatabases(silent = true)
             state.update { it.copy(status = "数据库已创建：" + name) }
         }
     }
@@ -134,7 +121,7 @@ class BrowseController(
                     destructiveConfirmInput = "",
                 )
             }
-            refreshDatabases(silent = true)
+            loadDatabases(silent = true)
             ctx.recordAudit("dropDatabase", name)
             state.update { it.copy(status = "数据库已删除：" + name) }
         }
@@ -142,18 +129,7 @@ class BrowseController(
 
     fun refreshCollections(silent: Boolean = false) {
         ctx.actions.run("刷新集合", silent = silent) {
-            val database = state.value.selectedDatabase
-            val collections = repository.listCollections(database)
-            val selected = state.value.selectedCollection
-                .takeIf { current -> collections.any { it.name == current } }
-                ?: collections.firstOrNull()?.name.orEmpty()
-            state.update {
-                it.copy(
-                    collections = collections,
-                    selectedCollection = selected,
-                    status = if (silent) it.status else ("已加载 " + collections.size + " 个集合"),
-                )
-            }
+            loadCollections(silent = silent)
         }
     }
 
@@ -165,7 +141,7 @@ class BrowseController(
             val collection = state.value.newCollectionName
             repository.createCollection(database, collection)
             state.update { it.copy(newCollectionName = "", selectedCollection = collection.trim()) }
-            refreshCollections(silent = true)
+            loadCollections(silent = true)
             state.update { it.copy(status = "集合已创建：" + collection) }
         }
     }
@@ -179,7 +155,7 @@ class BrowseController(
             val to = state.value.renameCollectionName
             repository.renameCollection(database, from, to)
             state.update { it.copy(renameCollectionName = "", selectedCollection = to.trim()) }
-            refreshCollections(silent = true)
+            loadCollections(silent = true)
             state.update { it.copy(status = "集合已重命名为 " + to) }
         }
     }
@@ -216,7 +192,7 @@ class BrowseController(
                     destructiveConfirmInput = "",
                 )
             }
-            refreshCollections(silent = true)
+            loadCollections(silent = true)
             ctx.recordAudit("dropCollection", database + "." + collection)
             state.update { it.copy(status = "集合已删除：" + collection) }
         }
@@ -224,28 +200,7 @@ class BrowseController(
 
     fun loadDocuments(resetSkip: Boolean = false) {
         ctx.actions.run("加载文档") {
-            if (resetSkip) {
-                state.update { it.copy(documentSkip = 0) }
-            }
-            val current = state.value
-            val page = repository.findDocuments(
-                database = current.selectedDatabase,
-                collection = current.selectedCollection,
-                filterJson = current.browseFilterJson,
-                sortJson = current.browseSortJson,
-                projectionJson = current.browseProjectionJson,
-                limit = current.documentLimit,
-                skip = current.documentSkip,
-            )
-            state.update {
-                it.copy(
-                    documents = page.documents,
-                    documentCountHint = page.countHint,
-                    selectedDocumentJson = page.documents.firstOrNull().orEmpty(),
-                    status = "已加载 " + page.documents.size + " 条文档" +
-                        (page.countHint?.let { count -> " / 约 " + count }.orEmpty()),
-                )
-            }
+            loadDocumentsInternal(resetSkip = resetSkip)
         }
     }
 
@@ -277,7 +232,7 @@ class BrowseController(
                 current.selectedCollection,
                 current.editorJson,
             )
-            loadDocuments(resetSkip = true)
+            loadDocumentsInternal(resetSkip = true)
             state.update { it.copy(status = "已插入 " + count + " 条文档") }
         }
     }
@@ -299,7 +254,7 @@ class BrowseController(
                 filter,
                 current.editorJson,
             )
-            loadDocuments()
+            loadDocumentsInternal()
             state.update { it.copy(status = "替换完成，modified=" + modified) }
         }
     }
@@ -320,7 +275,7 @@ class BrowseController(
                 current.editorJson,
                 multi = multi,
             )
-            loadDocuments()
+            loadDocumentsInternal()
             state.update { it.copy(status = "更新完成，modified=" + modified) }
         }
     }
@@ -346,7 +301,7 @@ class BrowseController(
                 filter,
                 multi = false,
             )
-            loadDocuments(resetSkip = true)
+            loadDocumentsInternal(resetSkip = true)
             ctx.recordAudit("deleteOne", current.selectedDatabase + "." + current.selectedCollection, "deleted=" + deleted)
             state.update { it.copy(status = "删除完成，deleted=" + deleted) }
         }
@@ -381,7 +336,7 @@ class BrowseController(
                 multi = true,
             )
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
-            loadDocuments(resetSkip = true)
+            loadDocumentsInternal(resetSkip = true)
             ctx.recordAudit("deleteMany", current.selectedDatabase + "." + current.selectedCollection, "deleted=" + deleted)
             state.update { it.copy(status = "删除完成，deleted=" + deleted) }
         }
@@ -515,6 +470,63 @@ class BrowseController(
             state.update { it.copy(maintenanceResultJson = result, status = "validator 已更新") }
             ctx.recordAudit("collMod.validator", database + "." + collection)
             loadValidator(database, collection)
+        }
+    }
+
+    private suspend fun loadDatabases(silent: Boolean = false) {
+        val databases = repository.listDatabases()
+        val selected = state.value.selectedDatabase
+            .takeIf { current -> databases.any { it.name == current } }
+            ?: databases.firstOrNull()?.name.orEmpty()
+        state.update {
+            it.copy(
+                databases = databases,
+                selectedDatabase = selected,
+                status = if (silent) it.status else ("已加载 " + databases.size + " 个数据库"),
+            )
+        }
+        if (selected.isNotBlank()) {
+            loadCollections(silent = true)
+        }
+    }
+
+    private suspend fun loadCollections(silent: Boolean = false) {
+        val database = state.value.selectedDatabase
+        val collections = repository.listCollections(database)
+        val selected = state.value.selectedCollection
+            .takeIf { current -> collections.any { it.name == current } }
+            ?: collections.firstOrNull()?.name.orEmpty()
+        state.update {
+            it.copy(
+                collections = collections,
+                selectedCollection = selected,
+                status = if (silent) it.status else ("已加载 " + collections.size + " 个集合"),
+            )
+        }
+    }
+
+    private suspend fun loadDocumentsInternal(resetSkip: Boolean = false) {
+        if (resetSkip) {
+            state.update { it.copy(documentSkip = 0) }
+        }
+        val current = state.value
+        val page = repository.findDocuments(
+            database = current.selectedDatabase,
+            collection = current.selectedCollection,
+            filterJson = current.browseFilterJson,
+            sortJson = current.browseSortJson,
+            projectionJson = current.browseProjectionJson,
+            limit = current.documentLimit,
+            skip = current.documentSkip,
+        )
+        state.update {
+            it.copy(
+                documents = page.documents,
+                documentCountHint = page.countHint,
+                selectedDocumentJson = page.documents.firstOrNull().orEmpty(),
+                status = "已加载 " + page.documents.size + " 条文档" +
+                    (page.countHint?.let { count -> " / 约 " + count }.orEmpty()),
+            )
         }
     }
 }

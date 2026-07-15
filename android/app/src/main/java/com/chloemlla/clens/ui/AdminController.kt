@@ -34,14 +34,7 @@ class AdminController(
             return
         }
         ctx.actions.run("刷新索引") {
-            val current = state.value
-            val indexes = repository.listIndexes(current.selectedDatabase, current.selectedCollection)
-            state.update {
-                it.copy(
-                    indexes = indexes,
-                    status = "已加载 " + indexes.size + " 个索引",
-                )
-            }
+            loadIndexes()
         }
     }
 
@@ -65,7 +58,7 @@ class AdminController(
                 sparse = current.indexSparse,
                 expireAfterSeconds = expire,
             )
-            refreshIndexes()
+            loadIndexes()
             state.update { it.copy(status = "索引已创建：" + name) }
         }
     }
@@ -95,7 +88,7 @@ class AdminController(
             val name = current.pendingDestructive?.target.orEmpty()
             repository.dropIndex(current.selectedDatabase, current.selectedCollection, name)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
-            refreshIndexes()
+            loadIndexes()
             state.update { it.copy(status = "索引已删除：" + name) }
         }
     }
@@ -178,6 +171,17 @@ class AdminController(
             }
             ctx.recordAudit("killOp", opId, result)
             loadCurrentOps()
+        }
+    }
+
+    private suspend fun loadIndexes() {
+        val current = state.value
+        val indexes = repository.listIndexes(current.selectedDatabase, current.selectedCollection)
+        state.update {
+            it.copy(
+                indexes = indexes,
+                status = "已加载 " + indexes.size + " 个索引",
+            )
         }
     }
 }
