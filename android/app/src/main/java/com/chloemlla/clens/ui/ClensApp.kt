@@ -56,11 +56,23 @@ fun ClensApp(viewModel: ClensViewModel) {
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                         )
-                        Text(text = "CLens", fontWeight = FontWeight.SemiBold)
+                        Column {
+                            Text(text = "CLens", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = if (state.isConnected) {
+                                    (state.connectedProfile?.name ?: "已连接") +
+                                        if (state.connectedReadOnly) " · 只读" else ""
+                                } else {
+                                    "MongoDB 管理客户端"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
@@ -74,7 +86,7 @@ fun ClensApp(viewModel: ClensViewModel) {
         ) {
             ScrollableTabRow(
                 selectedTabIndex = state.selectedTab.ordinal,
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 contentColor = MaterialTheme.colorScheme.primary,
                 edgePadding = 8.dp,
             ) {
@@ -90,13 +102,11 @@ fun ClensApp(viewModel: ClensViewModel) {
 
             val cleartextWarning = state.cleartextWarning
             if (!cleartextWarning.isNullOrBlank()) {
-                Text(
+                WarningBanner(
                     text = cleartextWarning,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
             Box(

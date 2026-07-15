@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -102,11 +101,11 @@ private fun ConnectionCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val compact = maxWidth < 420.dp
                 val titleBlock: @Composable (Modifier) -> Unit = { titleModifier ->
@@ -164,7 +163,11 @@ private fun ConnectionCard(
                     Text("编辑")
                 }
                 OutlinedButton(onClick = onTest, enabled = !loading) { Text("测试") }
-                Button(onClick = onConnect, enabled = !loading) { Text("连接") }
+                Button(onClick = onConnect, enabled = !loading) {
+                    Icon(Icons.Outlined.Link, contentDescription = null, Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(if (connected) "重连" else "连接")
+                }
                 OutlinedButton(onClick = onDelete, enabled = !loading) {
                     Icon(Icons.Outlined.DeleteOutline, contentDescription = "删除", Modifier.size(16.dp))
                     Spacer(Modifier.size(6.dp))
@@ -180,10 +183,10 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
     val form = state.connectionForm
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionTitle(
                 text = if (form.id == null) "新建连接" else "编辑连接",
                 subtitle = "URI 与表单二选一，URI 优先。",
@@ -302,7 +305,9 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                 )
             }
             ActionRow {
-                Button(onClick = viewModel::saveConnection, enabled = !state.loading) { Text("保存") }
+                Button(onClick = viewModel::saveConnection, enabled = !state.loading) {
+                    Text("保存连接")
+                }
                 OutlinedButton(onClick = { viewModel.testConnection() }, enabled = !state.loading) { Text("测试当前表单") }
                 OutlinedButton(onClick = viewModel::cancelEditConnection, enabled = !state.loading) { Text("取消") }
             }
