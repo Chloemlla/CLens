@@ -40,6 +40,11 @@ android {
             .orNull
             ?.takeIf { it.isNotBlank() }
             ?: "1.0.0"
+        buildConfigField(
+            "String",
+            "SHORT_HASH",
+            "\"${providerString("CLENS_SHORT_HASH", "unknown")}\"",
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -146,6 +151,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.mongodb:mongodb-driver-kotlin-coroutine:5.2.1")
     implementation("org.mongodb:bson-kotlin:5.2.1")
+    implementation("com.chloemlla.lumen:lumen-crash:0.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

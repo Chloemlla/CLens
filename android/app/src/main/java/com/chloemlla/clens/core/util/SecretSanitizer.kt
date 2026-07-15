@@ -1,6 +1,6 @@
-package com.chloemlla.clens.core.crash
+package com.chloemlla.clens.core.util
 
-internal object CrashReportSanitizer {
+object SecretSanitizer {
     fun sanitize(value: String): String {
         return value
             .replace(Regex("""[A-Za-z]:\\Users\\[^\\\s]+"""), "[user-home]")

@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   verify:
@@ -70,18 +71,27 @@ jobs:
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
+          CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew testProductionDebugUnitTest --no-daemon
 
       - name: Run Android lint
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
+          CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew lintProductionDebug --no-daemon
 
       - name: Build release APK for verification
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
+          CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew assembleProductionRelease --no-daemon
 
       - name: Upload verification reports
@@ -106,6 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
     defaults:
       run:
         working-directory: android
@@ -175,10 +186,13 @@ jobs:
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
+          CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
           KEYSTORE_FILE: ${{ env.KEYSTORE_FILE }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
         run: ./gradlew assembleProductionRelease --no-daemon
 
       - name: Prepare release assets
@@ -283,3 +297,4 @@ jobs:
           prerelease: false
           name: "CLens Android ${{ env.CLENS_ANDROID_RELEASE_VERSION }}"
           files: release-assets/*
+

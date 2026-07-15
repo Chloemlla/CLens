@@ -19,7 +19,8 @@ android/                         # Gradle root
   app/src/main/java/com/chloemlla/clens/
     core/mongo/                  # URI builder, session, admin repository
     core/storage/                # encrypted connection store
-    core/crash/                  # crash capture + sanitizer
+    core/util/                   # host secret sanitizer for UI errors
+    # lumen-crash SDK via GitHub Packages (capture + adaptive report UI)
     ui/                          # Compose tabs and panels
 .github/workflows/clens-android.yml
 .github/scripts/validate-clens-android-policy.py
@@ -49,6 +50,19 @@ Jobs:
 1. `verify` — policy script, unit tests, lint, release assemble
 2. `release` (main) — signed universal + ABI APKs, checksums, release manifest, GitHub Release
 
+## Crash reporting
+
+CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project Lumen via GitHub Packages:
+
+* Maven repo: `https://maven.pkg.github.com/Chloemlla/Project-Lumen`
+* Coordinates: `com.chloemlla.lumen:lumen-crash:0.1.0`
+* Install early in `ClensApplication.attachBaseContext`
+* Gate startup UI with `LumenCrashReportScreen`
+* Host product copy overrides live in `res/values*/strings.xml`
+* Host-side `SecretSanitizer` remains for Mongo/token redaction in action errors
+
+Local package resolution uses `gpr.user` / `gpr.key` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` / `GITHUB_TOKEN` in CI.
+
 ## Secrets
 
 Release signing expects GitHub repository secrets:
@@ -59,6 +73,11 @@ Release signing expects GitHub repository secrets:
 * `KEY_PASSWORD`
 
 Use `setup-android-signing.ps1` to generate and push these values.
+
+GitHub Packages resolution for `lumen-crash` expects either:
+
+* same-account package read via `GITHUB_TOKEN` (when permitted), or
+* repository secret `LUMEN_CRASH_READ_PACKAGES_TOKEN` with `read:packages` for the Project Lumen package
 
 ## Release minify notes
 
@@ -96,4 +115,5 @@ The **高级** tab adds:
 * Collection validator view/update via collMod
 * Readonly connection profiles that block writes
 * Local destructive-operation audit log in Advanced tab
+
 

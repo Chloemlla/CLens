@@ -2,66 +2,54 @@ package com.chloemlla.clens
 
 import android.app.Application
 import android.content.Context
-import com.chloemlla.clens.core.crash.CrashBreadcrumbs
-import com.chloemlla.clens.core.crash.CrashReport
-import com.chloemlla.clens.core.crash.CrashReportStore
+import com.chloemlla.lumen.crash.CrashBreadcrumbs
+import com.chloemlla.lumen.crash.CrashReport
+import com.chloemlla.lumen.crash.LumenCrash
+import com.chloemlla.lumen.crash.LumenCrashConfig
 
 class ClensApplication : Application() {
-    val crashReports: CrashReportStore by lazy { CrashReportStore(this) }
-    private var crashExceptionHandler: Thread.UncaughtExceptionHandler? = null
-
-    @Volatile
-    var startupCrashReport: CrashReport? = null
-        private set
+    val startupCrashReport: CrashReport?
+        get() = LumenCrash.startupCrashReport
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        installLumenCrashSdk()
         CrashBreadcrumbs.record("Application.attachBaseContext")
-        installCrashReporter()
     }
 
     override fun onCreate() {
         super.onCreate()
+        installLumenCrashSdk()
         CrashBreadcrumbs.record("Application.onCreate")
-        installCrashReporter()
     }
 
-    private fun installCrashReporter() {
-        val defaultExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
-        if (defaultExceptionHandler === crashExceptionHandler) return
-
-        lateinit var handler: Thread.UncaughtExceptionHandler
-        handler = Thread.UncaughtExceptionHandler { thread, throwable ->
-            val report = runCatching { CrashReport.fromThrowable(throwable) }
-                .getOrElse { CrashReport.fromThrowableFallback(throwable, it) }
-            runCatching { crashReports.save(report) }
-            if (defaultExceptionHandler != null && defaultExceptionHandler !== handler) {
-                defaultExceptionHandler.uncaughtException(thread, throwable)
-            } else {
-                android.os.Process.killProcess(android.os.Process.myPid())
-                kotlin.system.exitProcess(10)
-            }
-        }
-        crashExceptionHandler = handler
-        Thread.setDefaultUncaughtExceptionHandler(handler)
-        CrashBreadcrumbs.record("Crash reporter installed")
+    private fun installLumenCrashSdk() {
+        if (LumenCrash.isInstalled()) return
+        val appName = runCatching { getString(R.string.app_name) }.getOrDefault("CLens")
+        LumenCrash.install(
+            this,
+            LumenCrashConfig(
+                appDisplayName = appName,
+                versionName = BuildConfig.VERSION_NAME,
+                versionCode = BuildConfig.VERSION_CODE,
+                commitHash = BuildConfig.SHORT_HASH,
+                fileProviderAuthority = "${packageName}.fileprovider",
+                shareSubject = runCatching { getString(R.string.crash_report_share_subject) }.getOrNull(),
+                reportTitle = runCatching { getString(R.string.crash_report_title) }.getOrNull(),
+                reportMessage = runCatching { getString(R.string.crash_report_message) }.getOrNull(),
+            ),
+        )
     }
 
     fun recordStartupCrash(throwable: Throwable): CrashReport {
-        return recordCrash(throwable)
+        return LumenCrash.record(throwable)
     }
 
     fun recordCrash(throwable: Throwable): CrashReport {
-        CrashBreadcrumbs.record("Crash captured: ${throwable::class.java.name}")
-        val report = runCatching { CrashReport.fromThrowable(throwable) }
-            .getOrElse { CrashReport.fromThrowableFallback(throwable, it) }
-        startupCrashReport = report
-        runCatching { CrashReportStore(this).save(report) }
-        return report
+        return LumenCrash.record(throwable)
     }
 
     fun clearStartupCrashReport() {
-        startupCrashReport = null
-        crashReports.clear()
+        LumenCrash.clearPendingReport()
     }
 }

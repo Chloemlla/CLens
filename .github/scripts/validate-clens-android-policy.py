@@ -50,6 +50,10 @@ require_contains("android/app/build.gradle.kts", 'getDefaultProguardFile("progua
 require_contains("android/app/build.gradle.kts", 'applicationId = "com.chloemlla.clens"')
 require_contains("android/app/build.gradle.kts", 'create("production")')
 require_contains("android/app/build.gradle.kts", "mongodb-driver-kotlin-coroutine")
+require_contains("android/app/build.gradle.kts", "com.chloemlla.lumen:lumen-crash")
+require_contains("android/settings.gradle.kts", "maven.pkg.github.com/Chloemlla/Project-Lumen")
+require_contains("android/app/src/main/java/com/chloemlla/clens/ClensApplication.kt", "LumenCrash.install")
+require_contains("android/app/src/main/java/com/chloemlla/clens/MainActivity.kt", "LumenCrashReportScreen")
 require_contains("android/app/build.gradle.kts", "compileSdk = 37")
 require_contains("android/app/build.gradle.kts", "targetSdk = 37")
 require_contains(".github/workflows/clens-android.yml", "./gradlew testProductionDebugUnitTest")
@@ -62,3 +66,4 @@ if ERRORS:
     sys.exit(1)
 
 print("CLens Android policy checks passed.")
+

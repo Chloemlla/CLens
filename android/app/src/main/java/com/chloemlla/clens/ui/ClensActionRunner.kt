@@ -1,7 +1,7 @@
 package com.chloemlla.clens.ui
 
-import com.chloemlla.clens.core.crash.CrashBreadcrumbs
-import com.chloemlla.clens.core.crash.CrashReportSanitizer
+import com.chloemlla.clens.core.util.SecretSanitizer
+import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -39,7 +39,7 @@ class ClensActionRunner(
                     block()
                     CrashBreadcrumbs.record("Action ok: $label")
                 } catch (error: Throwable) {
-                    val message = CrashReportSanitizer.sanitize(
+                    val message = SecretSanitizer.sanitize(
                         error.message?.takeIf { it.isNotBlank() } ?: (label + " 失败"),
                     )
                     CrashBreadcrumbs.record("Action fail: $label")
@@ -58,3 +58,4 @@ class ClensActionRunner(
         }
     }
 }
+
