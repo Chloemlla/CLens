@@ -103,7 +103,7 @@ GitHub Packages resolution for `lumen-crash` expects either:
 * Optional Reactor / Micrometer / BlockHound service metadata is excluded from packaging and silenced with `-dontwarn`.
 * CI runs `.github/scripts/verify-mongo-sasl-retention.py` after `assembleProductionRelease` and fails the build if `SaslAuthenticator$SaslClientImpl` is absent from the release APK/DEX.
 * `MongoSessionManager` preloads SCRAM classes on the coroutine worker before opening sockets, so a linkage failure becomes a UI error instead of an uncaught async-thread crash.
-* Android does not ship the JDK `javax.security.sasl` module. CLens includes minimal stubs under `android/app/src/main/java/javax/security/sasl` so Mongo SCRAM classes that implement `SaslClient` can load. Real SCRAM crypto stays inside the Mongo driver (`ScramShaSaslClient`); GSSAPI/PLAIN remain unsupported on Android.
+* Android does not ship the JDK `javax.security.sasl` module. CLens includes minimal **Kotlin** stubs under `android/app/src/main/java/javax/security/sasl` so Mongo SCRAM classes that implement `SaslClient` can load while keeping the main source tree Kotlin-only. Real SCRAM crypto stays inside the Mongo driver (`ScramShaSaslClient`); GSSAPI/PLAIN remain unsupported on Android.
 
 ## Cleartext MongoDB
 
