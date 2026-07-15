@@ -31,14 +31,22 @@
 -dontwarn androidx.security.crypto.**
 
 # MongoDB Java driver uses reflection/service loading heavily.
-# Keep the driver surface, but exclude the optional Netty transport.
-# CLens always builds MongoClientSettings without StreamFactoryFactory, so the
-# default NIO socket factory is used. A broad com.mongodb.** keep forces R8 to
-# retain NettyStreamFactoryFactory even though Netty is not on the Android
-# classpath, which produces:
-#   "NettyStreamFactoryFactory.<init>(Builder) does not type check..."
--keep class !com.mongodb.internal.connection.netty.**, com.mongodb.** { *; }
+# Keep the full driver surface, including nested SASL authenticator classes.
+# CLens never configures StreamFactoryFactory, so runtime uses default NIO.
+# Do NOT use a negation keep filter here: excluding
+# com.mongodb.internal.connection.netty.** has been observed to leave SCRAM
+# handshake classes (SaslAuthenticator$SaslClientImpl) missing at runtime
+# under R8 full mode, causing:
+#   NoClassDefFoundError: com.mongodb.internal.connection.SaslAuthenticator$SaslClientImpl
+# A retained optional Netty constructor may only produce a benign R8 type-check
+# warning during minify; that is preferable to an auth-path crash.
+-keep class com.mongodb.** { *; }
 -keep class org.bson.** { *; }
+-keep class com.mongodb.internal.connection.SaslAuthenticator { *; }
+-keep class com.mongodb.internal.connection.SaslAuthenticator$* { *; }
+-keep class com.mongodb.internal.connection.**Authenticator* { *; }
+-keep class com.mongodb.internal.connection.**Authenticator$* { *; }
+-keep class com.mongodb.internal.authentication.** { *; }
 -dontwarn com.mongodb.**
 -dontwarn org.bson.**
 -dontwarn com.mongodb.internal.connection.netty.**
@@ -47,6 +55,7 @@
 -dontwarn javax.net.ssl.**
 -dontwarn org.slf4j.**
 -dontwarn org.ietf.jgss.**
+-dontwarn javax.security.sasl.**
 
 # Compose and lifecycle warnings are dependency-internal.
 -dontwarn androidx.compose.**

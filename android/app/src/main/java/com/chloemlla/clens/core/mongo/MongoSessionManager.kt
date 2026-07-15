@@ -34,9 +34,9 @@ class MongoSessionManager {
                 serverVersion = version,
                 message = "已连接 " + profile.displayTarget + (version?.let { " · MongoDB $it" } ?: ""),
             )
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
             runCatching { client.close() }
-            throw MongoAdminException.Operation(error.message ?: "连接失败", error)
+            throw wrapConnectionFailure("连接失败", error)
         }
     }
 
@@ -54,8 +54,8 @@ class MongoSessionManager {
                 serverVersion = version,
                 message = "测试成功 · ${latency}ms" + (version?.let { " · MongoDB $it" } ?: ""),
             )
-        } catch (error: Exception) {
-            throw MongoAdminException.Operation(error.message ?: "连接测试失败", error)
+        } catch (error: Throwable) {
+            throw wrapConnectionFailure("连接测试失败", error)
         } finally {
             runCatching { client.close() }
         }
@@ -103,5 +103,19 @@ class MongoSessionManager {
             is Number -> value.toDouble() == 1.0
             else -> false
         }
+    }
+
+    private fun wrapConnectionFailure(prefix: String, error: Throwable): MongoAdminException {
+        val detail = when (error) {
+            is NoClassDefFoundError, is ClassNotFoundException -> {
+                val missing = error.message?.substringAfter("Failed resolution of: ")?.trim()
+                    ?: error.message
+                    ?: error::class.java.simpleName
+                "$prefix: Mongo 驱动类缺失 ($missing)。请升级到修复 R8 keep 规则后的版本。"
+            }
+            else -> error.message?.takeIf { it.isNotBlank() } ?: prefix
+        }
+        val cause = error as? Exception ?: Exception(detail, error)
+        return MongoAdminException.Operation(detail, cause)
     }
 }

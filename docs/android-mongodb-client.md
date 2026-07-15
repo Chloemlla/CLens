@@ -98,7 +98,8 @@ GitHub Packages resolution for `lumen-crash` expects either:
 ## Release minify notes
 
 * Mongo driver jars include an optional Netty stream factory. CLens uses the default NIO `MongoClientSettings` path only.
-* ProGuard keeps `com.mongodb.**` while excluding `com.mongodb.internal.connection.netty.**` so R8 does not retain the untyped Netty constructor warning during `minifyProductionReleaseWithR8`.
+* ProGuard keeps the full `com.mongodb.**` surface, with explicit nested keep for `SaslAuthenticator$*`. Do **not** reintroduce a negation filter that excludes `com.mongodb.internal.connection.netty.**`: that filter previously correlated with release-only `NoClassDefFoundError: SaslAuthenticator$SaslClientImpl` during SCRAM handshake.
+* Optional Netty transport may still produce a benign R8 type-check warning at minify time; that is preferred over shipping a broken auth path.
 * Optional Reactor / Micrometer / BlockHound service metadata is excluded from packaging and silenced with `-dontwarn`.
 
 ## Cleartext MongoDB
