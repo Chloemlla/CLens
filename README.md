@@ -11,6 +11,7 @@ CLens is a mobile MongoDB management console:
 * run find / aggregate / explain
 * manage indexes and inspect server status
 * advanced tools: GridFS, Change Stream, user/role CRUD, import/export
+* query history, killOp, collection validator, readonly profiles, local audit log
 
 The Android app intentionally mirrors the UI/UX language, Gradle toolchain, dependency pins, crash-reporting posture, and GitHub auto-release pipeline of [Synapse-Client](https://github.com/Chloemlla/Synapse-Client).
 

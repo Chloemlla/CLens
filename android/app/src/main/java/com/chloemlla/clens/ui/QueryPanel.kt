@@ -1,6 +1,7 @@
 package com.chloemlla.clens.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
@@ -9,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -62,6 +64,20 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SectionTitle(text = "查询历史", subtitle = "最近 30 条本地保存。")
+        OutlinedButton(onClick = viewModel::refreshQueryHistory, enabled = !state.loading) { Text("刷新历史") }
+        if (state.queryHistory.isEmpty()) {
+            InfoCard(title = "暂无历史", lines = listOf("执行 find/aggregate 后会自动记录。"))
+        } else {
+            state.queryHistory.take(10).forEach { item ->
+                OutlinedButton(
+                    onClick = { viewModel.restoreQueryHistory(item.id) },
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(item.title) }
+            }
+        }
+
         ResultViewModeToggle(
             mode = state.resultViewMode,
             enabled = !state.loading,

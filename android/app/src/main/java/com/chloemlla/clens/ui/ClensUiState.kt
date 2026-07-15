@@ -8,6 +8,10 @@ import com.chloemlla.clens.core.mongo.ServerOverview
 import com.chloemlla.clens.core.mongo.GridFsFileSummary
 import com.chloemlla.clens.core.mongo.MongoUserSummary
 import com.chloemlla.clens.core.mongo.MongoRoleSummary
+import com.chloemlla.clens.core.mongo.QueryHistoryEntry
+import com.chloemlla.clens.core.mongo.AuditLogEntry
+import com.chloemlla.clens.core.mongo.CurrentOpSummary
+import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
 
 enum class ResultViewMode {
     Json,
@@ -24,6 +28,7 @@ enum class DestructiveAction {
     DropRole,
     DropGridFsFile,
     ImportDropCollection,
+    KillOp,
 }
 
 data class PendingDestructiveAction(
@@ -54,6 +59,7 @@ data class ConnectionFormState(
     val replicaSet: String = "",
     val tls: Boolean = false,
     val directConnection: Boolean = true,
+    val readOnly: Boolean = false,
 )
 
 data class ClensUiState(
@@ -133,6 +139,16 @@ data class ClensUiState(
     val importDropBefore: Boolean = false,
     val exportLimit: String = "200",
     val exportJson: String = "",
+    val queryHistory: List<QueryHistoryEntry> = emptyList(),
+    val auditLog: List<AuditLogEntry> = emptyList(),
+    val currentOps: List<CurrentOpSummary> = emptyList(),
+    val currentOpsListError: String? = null,
+    val collectionValidator: CollectionValidatorInfo? = null,
+    val collectionValidatorError: String? = null,
+    val validatorJsonInput: String = "{}",
+    val validationLevelInput: String = "strict",
+    val validationActionInput: String = "error",
+    val connectedReadOnly: Boolean = false,
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,
@@ -144,4 +160,7 @@ data class ClensUiState(
         get() = collections.firstOrNull { it.name == selectedCollection }?.type ?: "collection"
     val isSelectedView: Boolean
         get() = selectedCollectionType.equals("view", ignoreCase = true)
+    val writesBlocked: Boolean
+        get() = connectedReadOnly || isSelectedView
 }
+

@@ -59,6 +59,7 @@ class AdvancedController(
     }
 
     fun uploadGridFs() {
+        ctx.ensureWritable("GridFS 上传")
         val database = state.value.selectedDatabase
         if (database.isBlank()) {
             state.update { it.copy(error = "请先选择数据库。") }
@@ -72,6 +73,7 @@ class AdvancedController(
                 bucketName = state.value.gridFsBucket,
             )
             state.update { it.copy(status = "已上传 GridFS 文件 id=" + id, gridFsUploadContent = "") }
+            ctx.recordAudit("gridfs.upload", id)
             loadGridFs(database)
         }
     }
@@ -99,12 +101,14 @@ class AdvancedController(
     }
 
     fun deleteGridFsConfirmed() {
+        ctx.ensureWritable("GridFS 删除")
         val database = state.value.selectedDatabase
         val fileId = state.value.pendingDestructive?.target.orEmpty()
         if (database.isBlank() || fileId.isBlank()) return
         ctx.actions.run("删除 GridFS 文件") {
             repository.deleteGridFsFile(database, fileId, state.value.gridFsBucket)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "GridFS 文件已删除") }
+            ctx.recordAudit("gridfs.delete", fileId)
             loadGridFs(database)
         }
     }
@@ -178,6 +182,7 @@ class AdvancedController(
     }
 
     fun createUser() {
+        ctx.ensureWritable("创建用户")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         ctx.actions.run("创建用户") {
             repository.createUser(
@@ -190,6 +195,7 @@ class AdvancedController(
                 it.copy(
                     createUserPassword = "",
                     status = "用户已创建：" + state.value.createUserName,
+                
                 )
             }
             loadUsersAndRoles(authDb)
@@ -210,16 +216,19 @@ class AdvancedController(
     }
 
     fun dropUserConfirmed() {
+        ctx.ensureWritable("删除用户")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         val user = state.value.pendingDestructive?.target.orEmpty()
         ctx.actions.run("删除用户") {
             repository.dropUser(authDb, user)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "用户已删除：" + user) }
+            ctx.recordAudit("dropUser", user)
             loadUsersAndRoles(authDb)
         }
     }
 
     fun createRole() {
+        ctx.ensureWritable("创建角色")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         ctx.actions.run("创建角色") {
             repository.createRole(
@@ -229,6 +238,7 @@ class AdvancedController(
                 rolesJson = state.value.createRoleRolesJson,
             )
             state.update { it.copy(status = "角色已创建：" + state.value.createRoleName) }
+            ctx.recordAudit("createRole", state.value.createRoleName)
             loadUsersAndRoles(authDb)
         }
     }
@@ -247,11 +257,13 @@ class AdvancedController(
     }
 
     fun dropRoleConfirmed() {
+        ctx.ensureWritable("删除角色")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         val role = state.value.pendingDestructive?.target.orEmpty()
         ctx.actions.run("删除角色") {
             repository.dropRole(authDb, role)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "角色已删除：" + role) }
+            ctx.recordAudit("dropRole", role)
             loadUsersAndRoles(authDb)
         }
     }
@@ -274,6 +286,7 @@ class AdvancedController(
     }
 
     fun importConfirmed() {
+        ctx.ensureWritable("导入文档")
         val database = state.value.selectedDatabase
         val collection = state.value.selectedCollection
         if (database.isBlank() || collection.isBlank()) {
@@ -294,6 +307,7 @@ class AdvancedController(
                     status = "导入完成，插入 " + count + " 条",
                 )
             }
+            ctx.recordAudit("importDocuments", database + "." + collection, "count=" + count)
         }
     }
 
@@ -313,5 +327,16 @@ class AdvancedController(
 
     fun onCleared() {
         stopChangeStream()
+    }
+
+    fun refreshAuditLog() {
+        ctx.refreshLocalLists()
+        state.update { it.copy(status = "审计日志已刷新") }
+    }
+
+    fun clearAuditLog() {
+        ctx.localStore.clearAuditLog()
+        ctx.refreshLocalLists()
+        state.update { it.copy(status = "审计日志已清空") }
     }
 }

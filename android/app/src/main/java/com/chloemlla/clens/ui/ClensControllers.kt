@@ -5,6 +5,7 @@ import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
+import com.chloemlla.clens.core.storage.LocalAppStore
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -12,10 +13,30 @@ import kotlinx.coroutines.flow.update
 class ClensSessionContext(
     val state: MutableStateFlow<ClensUiState>,
     val connectionStore: MongoConnectionStore,
+    val localStore: LocalAppStore,
     val sessionManager: MongoSessionManager,
     val repository: MongoAdminRepository,
     val actions: ClensActionRunner,
 ) {
+    fun refreshLocalLists() {
+        state.update {
+            it.copy(
+                queryHistory = localStore.listQueryHistory(),
+                auditLog = localStore.listAuditLog(),
+            )
+        }
+    }
+
+    fun recordAudit(action: String, target: String, detail: String = "") {
+        localStore.addAudit(action, target, detail)
+        refreshLocalLists()
+    }
+
+    fun ensureWritable(operation: String) {
+        if (state.value.connectedReadOnly) {
+            throw MongoAdminException.Validation("当前连接为只读模式，已阻止：" + operation)
+        }
+    }
     fun refreshProfiles(status: String? = null) {
         val profiles = connectionStore.listProfiles()
         val activeId = connectionStore.getActiveProfileId()
@@ -46,6 +67,7 @@ class ClensSessionContext(
             replicaSet = form.replicaSet.trim(),
             tls = form.tls,
             directConnection = form.directConnection,
+            readOnly = form.readOnly,
         )
     }
 
@@ -105,6 +127,7 @@ class ConnectionController(
                     replicaSet = profile.replicaSet,
                     tls = profile.tls,
                     directConnection = profile.directConnection,
+                    readOnly = profile.readOnly,
                 ),
                 status = "编辑连接：" + profile.name,
                 error = null,
@@ -135,6 +158,7 @@ class ConnectionController(
                 replicaSet = form.replicaSet.trim(),
                 tls = form.tls,
                 directConnection = form.directConnection,
+                readOnly = form.readOnly,
             )
             connectionStore.upsert(profile)
             ctx.refreshProfiles(status = "已保存连接 " + profile.name)
@@ -194,6 +218,7 @@ class ConnectionController(
                     error = null,
                     selectedTab = ClensTab.Browse,
                     cleartextWarning = CleartextRisk.forProfile(target),
+                    connectedReadOnly = target.readOnly,
                 )
             }
             onConnected()
@@ -218,6 +243,7 @@ class ConnectionController(
                     status = "已断开连接",
                     error = null,
                     cleartextWarning = null,
+                    connectedReadOnly = false,
                 )
             }
         }

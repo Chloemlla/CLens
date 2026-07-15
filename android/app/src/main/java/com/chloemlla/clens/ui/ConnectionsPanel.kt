@@ -122,11 +122,12 @@ private fun ConnectionCard(
                 StatusPill(
                     icon = if (connected) Icons.Outlined.Link else Icons.Outlined.Cable,
                     label = when {
+                        connected && profile.readOnly -> "只读连接"
                         connected -> "已连接"
                         active -> "默认"
                         else -> "待命"
                     },
-                    value = profile.host.ifBlank { "URI" },
+                    value = profile.host.ifBlank { "URI" } + if (profile.readOnly) " · RO" else "",
                     active = connected || active,
                 )
             }
@@ -254,6 +255,9 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                 }
                 FlagRow("Direct Connection", form.directConnection, !state.loading) { checked ->
                     viewModel.updateConnectionForm { it.copy(directConnection = checked) }
+                }
+                FlagRow("只读模式", form.readOnly, !state.loading) { checked ->
+                    viewModel.updateConnectionForm { it.copy(readOnly = checked) }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

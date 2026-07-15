@@ -109,10 +109,13 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "服务器",
             subtitle = "serverStatus / usersInfo / currentOp 权限不足时会降级提示。",
         )
-        OutlinedButton(onClick = viewModel::refreshServerOverview, enabled = !state.loading) {
-            Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
-            Spacer(Modifier.size(6.dp))
-            Text("刷新服务器信息")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = viewModel::refreshServerOverview, enabled = !state.loading) {
+                Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("刷新服务器信息")
+            }
+            OutlinedButton(onClick = viewModel::refreshCurrentOps, enabled = !state.loading) { Text("刷新当前操作") }
         }
         state.serverOverview?.let { overview ->
             InfoCard(
@@ -134,9 +137,27 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             else -> InfoCard(title = "用户", lines = listOf("当前认证库没有可显示的用户，或结果为空。"))
         }
         when {
+            state.currentOpsListError != null -> InfoCard(title = "当前操作不可用", lines = listOf(state.currentOpsListError ?: ""))
             state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError ?: ""))
+            state.currentOps.isNotEmpty() -> {
+                state.currentOps.forEach { op ->
+                    InfoCard(
+                        title = "opid " + op.opId,
+                        lines = listOf(
+                            "op: " + op.op.ifBlank { "-" },
+                            "ns: " + op.ns.ifBlank { "-" },
+                            "secsRunning: " + (op.secsRunning?.toString() ?: "-"),
+                            "client: " + op.client.ifBlank { "-" },
+                        ),
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.requestKillOp(op.opId) },
+                        enabled = !state.loading && !state.connectedReadOnly,
+                    ) { Text("killOp") }
+                }
+            }
             state.currentOpsJson.isNotBlank() -> JsonField("currentOp", state.currentOpsJson, enabled = false, minLines = 8) {}
-            else -> InfoCard(title = "currentOp", lines = listOf("暂无当前操作数据。"))
+            else -> InfoCard(title = "currentOp", lines = listOf("暂无当前操作数据。点击刷新。"))
         }
     }
 }

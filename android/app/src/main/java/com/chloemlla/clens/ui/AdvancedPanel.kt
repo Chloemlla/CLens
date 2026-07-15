@@ -207,5 +207,25 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.exportJson.isNotBlank()) {
             JsonField("导出结果", state.exportJson, enabled = false, minLines = 8) {}
         }
+
+        SectionTitle(text = "本地审计日志", subtitle = "仅记录本机危险操作，最多 100 条。")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = viewModel::refreshAuditLog, enabled = !state.loading) { Text("刷新审计") }
+            OutlinedButton(onClick = viewModel::clearAuditLog, enabled = !state.loading && state.auditLog.isNotEmpty()) { Text("清空审计") }
+        }
+        if (state.auditLog.isEmpty()) {
+            InfoCard(title = "暂无审计事件", lines = listOf("删除/compact/导入覆盖/用户角色变更会写入这里。"))
+        } else {
+            state.auditLog.take(20).forEach { item ->
+                InfoCard(
+                    title = item.action,
+                    lines = listOf(
+                        "target: " + item.target,
+                        "detail: " + item.detail.ifBlank { "-" },
+                        "time: " + item.createdAtMillis.toString(),
+                    ),
+                )
+            }
+        }
     }
 }

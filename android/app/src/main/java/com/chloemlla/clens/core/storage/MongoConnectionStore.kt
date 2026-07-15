@@ -88,6 +88,7 @@ class MongoConnectionStore(
                     put("replicaSet", profile.replicaSet)
                     put("tls", profile.tls)
                     put("directConnection", profile.directConnection)
+                    put("readOnly", profile.readOnly)
                     put("createdAtMillis", profile.createdAtMillis)
                     put("updatedAtMillis", profile.updatedAtMillis)
                 },
@@ -115,6 +116,7 @@ class MongoConnectionStore(
                         replicaSet = item.optString("replicaSet"),
                         tls = item.optBoolean("tls", false),
                         directConnection = item.optBoolean("directConnection", true),
+                        readOnly = item.optBoolean("readOnly", false),
                         createdAtMillis = item.optLong("createdAtMillis", System.currentTimeMillis()),
                         updatedAtMillis = item.optLong("updatedAtMillis", System.currentTimeMillis()),
                     ),

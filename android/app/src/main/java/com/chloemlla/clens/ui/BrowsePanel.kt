@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
     val context = LocalContext.current
-    val writeEnabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView
+    val writeEnabled = !state.loading && state.selectedCollection.isNotBlank() && !state.writesBlocked
 
     PanelColumn(state = state, onDismissFeedback = viewModel::clearFeedback) {
         ClensAppHeader(state = state)
@@ -134,6 +134,9 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             },
         )
 
+        if (state.connectedReadOnly) {
+            InfoCard(title = "只读连接", lines = listOf("当前连接启用了只读模式，所有写入/破坏性操作都会被阻止。"))
+        }
         if (state.isSelectedView) {
             InfoCard(title = "当前对象是视图", lines = listOf("视图支持查询，不支持写入、索引维护、compact。"))
         }
@@ -169,6 +172,42 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
         if (state.maintenanceResultJson.isNotBlank()) {
             JsonField("维护命令结果", state.maintenanceResultJson, enabled = false, minLines = 6) {}
+        }
+
+        SectionTitle(text = "集合 Validator", subtitle = "collMod best-effort。")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = viewModel::loadCollectionValidator,
+                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
+            ) { Text("加载 validator") }
+            Button(
+                onClick = viewModel::applyCollectionValidator,
+                enabled = writeEnabled,
+            ) { Text("应用 validator") }
+        }
+        when {
+            state.collectionValidatorError != null -> InfoCard(title = "Validator 不可用", lines = listOf(state.collectionValidatorError ?: ""))
+            else -> {
+                JsonField("validator JSON", state.validatorJsonInput, writeEnabled, minLines = 4) {
+                    viewModel.updateText(ClensViewModel.Field.ValidatorJsonInput, it)
+                }
+                OutlinedTextField(
+                    value = state.validationLevelInput,
+                    onValueChange = { viewModel.updateText(ClensViewModel.Field.ValidationLevelInput, it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("validationLevel") },
+                    enabled = writeEnabled,
+                )
+                OutlinedTextField(
+                    value = state.validationActionInput,
+                    onValueChange = { viewModel.updateText(ClensViewModel.Field.ValidationActionInput, it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("validationAction") },
+                    enabled = writeEnabled,
+                )
+            }
         }
 
         JsonField("Filter", state.browseFilterJson, !state.loading) {

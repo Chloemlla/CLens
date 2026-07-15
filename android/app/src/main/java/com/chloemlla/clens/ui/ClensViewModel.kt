@@ -7,6 +7,7 @@ import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
+import com.chloemlla.clens.core.storage.LocalAppStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.update
 
 class ClensViewModel(
     connectionStore: MongoConnectionStore,
+    localStore: LocalAppStore,
     sessionManager: MongoSessionManager,
     repository: MongoAdminRepository,
 ) : ViewModel() {
@@ -24,6 +26,7 @@ class ClensViewModel(
     private val ctx = ClensSessionContext(
         state = _state,
         connectionStore = connectionStore,
+        localStore = localStore,
         sessionManager = sessionManager,
         repository = repository,
         actions = actions,
@@ -36,6 +39,7 @@ class ClensViewModel(
 
     init {
         ctx.refreshProfiles(status = "连接配置已加载")
+        ctx.refreshLocalLists()
     }
 
     fun selectTab(tab: ClensTab) {
@@ -139,6 +143,15 @@ class ClensViewModel(
     fun requestImport() = advanced.requestImport()
     fun importConfirmed() = advanced.importConfirmed()
     fun exportCollection() = advanced.exportCollection()
+    fun restoreQueryHistory(id: String) = query.restoreQueryHistory(id)
+    fun refreshQueryHistory() = query.refreshQueryHistory()
+    fun refreshCurrentOps() = admin.refreshCurrentOps()
+    fun requestKillOp(opId: String) = admin.requestKillOp(opId)
+    fun killOpConfirmed() = admin.killOpConfirmed()
+    fun loadCollectionValidator() = browse.loadCollectionValidator()
+    fun applyCollectionValidator() = browse.applyCollectionValidator()
+    fun refreshAuditLog() = advanced.refreshAuditLog()
+    fun clearAuditLog() = advanced.clearAuditLog()
 
     override fun onCleared() {
         advanced.onCleared()
@@ -171,6 +184,7 @@ class ClensViewModel(
             DestructiveAction.DropRole -> advanced.dropRoleConfirmed()
             DestructiveAction.DropGridFsFile -> advanced.deleteGridFsConfirmed()
             DestructiveAction.ImportDropCollection -> advanced.importConfirmed()
+            DestructiveAction.KillOp -> admin.killOpConfirmed()
         }
     }
 
@@ -202,16 +216,20 @@ class ClensViewModel(
         CreateRoleRolesJson,
         ImportJson,
         ExportLimit,
+        ValidatorJsonInput,
+        ValidationLevelInput,
+        ValidationActionInput,
     }
 
     class Factory(
         private val connectionStore: MongoConnectionStore,
+        private val localStore: LocalAppStore,
         private val sessionManager: MongoSessionManager,
         private val repository: MongoAdminRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ClensViewModel(connectionStore, sessionManager, repository) as T
+            return ClensViewModel(connectionStore, localStore, sessionManager, repository) as T
         }
     }
 }

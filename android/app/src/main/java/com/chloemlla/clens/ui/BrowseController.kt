@@ -58,6 +58,9 @@ class BrowseController(
                 ClensViewModel.Field.BrowseProjection -> current.copy(browseProjectionJson = value)
                 ClensViewModel.Field.EditorJson -> current.copy(editorJson = value)
                 ClensViewModel.Field.SelectedDocument -> current.copy(selectedDocumentJson = value)
+                ClensViewModel.Field.ValidatorJsonInput -> current.copy(validatorJsonInput = value)
+                ClensViewModel.Field.ValidationLevelInput -> current.copy(validationLevelInput = value)
+                ClensViewModel.Field.ValidationActionInput -> current.copy(validationActionInput = value)
                 else -> current
             }
         }
@@ -88,6 +91,8 @@ class BrowseController(
     }
 
     fun createDatabase() {
+        ctx.ensureWritable("创建数据库")
+
         ctx.actions.run("创建数据库") {
             val name = state.value.newDatabaseName
             repository.createDatabase(name)
@@ -113,6 +118,8 @@ class BrowseController(
     }
 
     fun dropDatabaseConfirmed() {
+        ctx.ensureWritable("删除数据库")
+
         ctx.actions.run("删除数据库") {
             val name = state.value.selectedDatabase
             repository.dropDatabase(name)
@@ -128,6 +135,7 @@ class BrowseController(
                 )
             }
             refreshDatabases(silent = true)
+            ctx.recordAudit("dropDatabase", name)
             state.update { it.copy(status = "数据库已删除：" + name) }
         }
     }
@@ -150,6 +158,8 @@ class BrowseController(
     }
 
     fun createCollection() {
+        ctx.ensureWritable("创建集合")
+
         ctx.actions.run("创建集合") {
             val database = state.value.selectedDatabase
             val collection = state.value.newCollectionName
@@ -161,6 +171,8 @@ class BrowseController(
     }
 
     fun renameCollection() {
+        ctx.ensureWritable("重命名集合")
+
         ctx.actions.run("重命名集合") {
             val database = state.value.selectedDatabase
             val from = state.value.selectedCollection
@@ -189,6 +201,8 @@ class BrowseController(
     }
 
     fun dropCollectionConfirmed() {
+        ctx.ensureWritable("删除集合")
+
         ctx.actions.run("删除集合") {
             val database = state.value.selectedDatabase
             val collection = state.value.selectedCollection
@@ -203,6 +217,7 @@ class BrowseController(
                 )
             }
             refreshCollections(silent = true)
+            ctx.recordAudit("dropCollection", database + "." + collection)
             state.update { it.copy(status = "集合已删除：" + collection) }
         }
     }
@@ -249,6 +264,8 @@ class BrowseController(
     }
 
     fun insertDocuments() {
+        ctx.ensureWritable("插入文档")
+
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持写入文档。") }
             return
@@ -266,6 +283,8 @@ class BrowseController(
     }
 
     fun replaceSelectedDocument() {
+        ctx.ensureWritable("替换文档")
+
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持替换文档。") }
             return
@@ -286,6 +305,8 @@ class BrowseController(
     }
 
     fun updateDocuments(multi: Boolean) {
+        ctx.ensureWritable("更新文档")
+
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持更新文档。") }
             return
@@ -305,6 +326,8 @@ class BrowseController(
     }
 
     fun deleteDocuments(multi: Boolean) {
+        ctx.ensureWritable("删除文档")
+
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持删除文档。") }
             return
@@ -324,11 +347,14 @@ class BrowseController(
                 multi = false,
             )
             loadDocuments(resetSkip = true)
+            ctx.recordAudit("deleteOne", current.selectedDatabase + "." + current.selectedCollection, "deleted=" + deleted)
             state.update { it.copy(status = "删除完成，deleted=" + deleted) }
         }
     }
 
     fun requestDeleteMany() {
+        ctx.ensureWritable("批量删除")
+
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持批量删除。") }
             return
@@ -356,6 +382,7 @@ class BrowseController(
             )
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
             loadDocuments(resetSkip = true)
+            ctx.recordAudit("deleteMany", current.selectedDatabase + "." + current.selectedCollection, "deleted=" + deleted)
             state.update { it.copy(status = "删除完成，deleted=" + deleted) }
         }
     }
@@ -407,6 +434,8 @@ class BrowseController(
     }
 
     fun compactCollectionConfirmed() {
+        ctx.ensureWritable("compact")
+
         ctx.actions.run("压缩集合") {
             val database = state.value.selectedDatabase
             val collection = state.value.selectedCollection
@@ -419,6 +448,7 @@ class BrowseController(
                     status = "compact 完成",
                 )
             }
+            ctx.recordAudit("compact", database + "." + collection)
         }
     }
 
@@ -441,4 +471,50 @@ class BrowseController(
         state.update { it.copy(resultViewMode = mode) }
     }
 
+
+    fun loadCollectionValidator() {
+        val database = state.value.selectedDatabase
+        val collection = state.value.selectedCollection
+        if (database.isBlank() || collection.isBlank()) return
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持 validator。", collectionValidator = null) }
+            return
+        }
+        ctx.actions.run("加载 validator") {
+            loadValidator(database, collection)
+        }
+    }
+
+    private suspend fun loadValidator(database: String, collection: String) {
+        val info = runCatching { repository.getCollectionValidator(database, collection) }
+        state.update {
+            it.copy(
+                collectionValidator = info.getOrNull(),
+                collectionValidatorError = info.exceptionOrNull()?.message,
+                validatorJsonInput = info.getOrNull()?.validatorJson ?: it.validatorJsonInput,
+                validationLevelInput = info.getOrNull()?.validationLevel ?: it.validationLevelInput,
+                validationActionInput = info.getOrNull()?.validationAction ?: it.validationActionInput,
+                status = if (info.isSuccess) "validator 已加载" else it.status,
+            )
+        }
+    }
+
+    fun applyCollectionValidator() {
+        ctx.ensureWritable("更新 validator")
+        val database = state.value.selectedDatabase
+        val collection = state.value.selectedCollection
+        if (database.isBlank() || collection.isBlank() || state.value.isSelectedView) return
+        ctx.actions.run("更新 validator") {
+            val result = repository.setCollectionValidator(
+                database = database,
+                collectionName = collection,
+                validatorJson = state.value.validatorJsonInput,
+                validationLevel = state.value.validationLevelInput,
+                validationAction = state.value.validationActionInput,
+            )
+            state.update { it.copy(maintenanceResultJson = result, status = "validator 已更新") }
+            ctx.recordAudit("collMod.validator", database + "." + collection)
+            loadValidator(database, collection)
+        }
+    }
 }

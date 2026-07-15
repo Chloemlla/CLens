@@ -696,6 +696,76 @@ class MongoAdminRepository(
         return doc[fieldName] ?: emptyList<Any>()
     }
 
+
+    suspend fun listCurrentOps(): List<CurrentOpSummary> = withContext(Dispatchers.IO) {
+        val result = sessionManager.requireClient()
+            .getDatabase("admin")
+            .runCommand(Document("currentOp", 1))
+        val inprog = result.getList("inprog", Document::class.java).orEmpty()
+        inprog.mapNotNull { doc ->
+            val opId = doc["opid"]?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            CurrentOpSummary(
+                opId = opId,
+                op = doc.stringValue("op"),
+                ns = doc.stringValue("ns"),
+                secsRunning = doc.numberLong("secs_running") ?: doc.numberLong("microsecs_running")?.let { it / 1_000_000 },
+                client = doc.stringValue("client"),
+                rawJson = pretty(doc),
+            )
+        }
+    }
+
+    suspend fun killOp(opId: String): String = withContext(Dispatchers.IO) {
+        val idValue: Any = opId.toLongOrNull() ?: opId
+        val result = sessionManager.requireClient()
+            .getDatabase("admin")
+            .runCommand(Document("killOp", 1).append("op", idValue))
+        pretty(result)
+    }
+
+    suspend fun getCollectionValidator(
+        database: String,
+        collectionName: String,
+    ): CollectionValidatorInfo = withContext(Dispatchers.IO) {
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        val info = db.runCommand(Document("listCollections", 1).append("filter", Document("name", requireName(collectionName, "集合"))))
+        val first = info.get("cursor", Document::class.java)
+            ?.getList("firstBatch", Document::class.java)
+            ?.firstOrNull()
+            ?: throw MongoAdminException.Validation("未找到集合元数据。")
+        val options = first.get("options", Document::class.java) ?: Document()
+        val validator = options.get("validator", Document::class.java) ?: Document()
+        CollectionValidatorInfo(
+            validatorJson = pretty(validator),
+            validationLevel = options.stringValue("validationLevel", "strict"),
+            validationAction = options.stringValue("validationAction", "error"),
+            rawJson = pretty(first),
+        )
+    }
+
+    suspend fun setCollectionValidator(
+        database: String,
+        collectionName: String,
+        validatorJson: String,
+        validationLevel: String,
+        validationAction: String,
+    ): String = withContext(Dispatchers.IO) {
+        val validator = parseDocument(validatorJson.ifBlank { "{}" }, "validator")
+        val command = Document(
+            mapOf(
+                "collMod" to requireName(collectionName, "集合"),
+                "validator" to validator,
+                "validationLevel" to validationLevel.ifBlank { "strict" },
+                "validationAction" to validationAction.ifBlank { "error" },
+            ),
+        )
+        pretty(
+            sessionManager.requireClient()
+                .getDatabase(requireName(database, "数据库"))
+                .runCommand(command),
+        )
+    }
+
     private fun collection(database: String, collection: String) =
         sessionManager.requireClient()
             .getDatabase(requireName(database, "数据库"))

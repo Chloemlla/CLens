@@ -12,6 +12,7 @@ import com.chloemlla.clens.core.crash.CrashBreadcrumbs
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
+import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.ui.ClensApp
 import com.chloemlla.clens.ui.ClensTheme
 import com.chloemlla.clens.ui.ClensViewModel
@@ -60,11 +61,12 @@ class MainActivity : ComponentActivity() {
     private fun createViewModel(app: ClensApplication): ClensViewModel? {
         return try {
             val store = MongoConnectionStore(applicationContext)
+            val localStore = LocalAppStore(applicationContext)
             val sessionManager = MongoSessionManager()
             val repository = MongoAdminRepository(sessionManager)
             ViewModelProvider(
                 this,
-                ClensViewModel.Factory(store, sessionManager, repository),
+                ClensViewModel.Factory(store, localStore, sessionManager, repository),
             )[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             app.recordStartupCrash(throwable)

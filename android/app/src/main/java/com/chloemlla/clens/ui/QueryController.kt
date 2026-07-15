@@ -1,5 +1,7 @@
 package com.chloemlla.clens.ui
 
+import com.chloemlla.clens.core.mongo.QueryHistoryEntry
+import java.util.UUID
 import kotlinx.coroutines.flow.update
 
 class QueryController(
@@ -75,6 +77,7 @@ class QueryController(
                             status = "聚合返回 " + result.documents.size + " 条 · " + result.durationMillis + "ms",
                         )
                     }
+                    saveHistory(aggregate = true)
                 }
             } else {
                 val page = repository.findDocuments(
@@ -106,7 +109,44 @@ class QueryController(
                             if (withExplain) "（含 explain）" else "",
                     )
                 }
+                saveHistory(aggregate = false)
             }
         }
+    }
+
+    fun refreshQueryHistory() {
+        ctx.refreshLocalLists()
+    }
+
+    fun restoreQueryHistory(id: String) {
+        val entry = state.value.queryHistory.firstOrNull { it.id == id } ?: return
+        state.update {
+            it.copy(
+                queryModeAggregate = entry.modeAggregate,
+                selectedDatabase = entry.database.ifBlank { it.selectedDatabase },
+                selectedCollection = entry.collection.ifBlank { it.selectedCollection },
+                queryFilterJson = entry.filterJson,
+                querySortJson = entry.sortJson,
+                queryProjectionJson = entry.projectionJson,
+                queryPipelineJson = entry.pipelineJson,
+                status = "已恢复查询历史：" + entry.title,
+            )
+        }
+    }
+
+    private fun saveHistory(aggregate: Boolean) {
+        val current = state.value
+        val entry = QueryHistoryEntry(
+            id = UUID.randomUUID().toString(),
+            modeAggregate = aggregate,
+            database = current.selectedDatabase,
+            collection = current.selectedCollection,
+            filterJson = current.queryFilterJson,
+            sortJson = current.querySortJson,
+            projectionJson = current.queryProjectionJson,
+            pipelineJson = current.queryPipelineJson,
+        )
+        ctx.localStore.addQueryHistory(entry)
+        ctx.refreshLocalLists()
     }
 }

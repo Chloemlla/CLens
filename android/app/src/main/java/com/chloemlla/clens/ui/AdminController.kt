@@ -46,6 +46,7 @@ class AdminController(
     }
 
     fun createIndex() {
+        ctx.ensureWritable("创建索引")
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持创建索引。") }
             return
@@ -70,6 +71,7 @@ class AdminController(
     }
 
     fun requestDropIndex(name: String) {
+        ctx.ensureWritable("删除索引")
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持删除索引。") }
             return
@@ -115,6 +117,55 @@ class AdminController(
                     status = "服务器信息已更新",
                 )
             }
+        }
+    }
+
+    fun refreshCurrentOps() {
+        ctx.actions.run("刷新当前操作") {
+            val ops = runCatching { repository.listCurrentOps() }
+            state.update {
+                it.copy(
+                    currentOps = ops.getOrDefault(emptyList()),
+                    currentOpsListError = ops.exceptionOrNull()?.message,
+                    currentOpsJson = if (ops.isSuccess) {
+                        ops.getOrNull()?.joinToString(separator = ",\n", prefix = "[\n", postfix = "\n]") { it.rawJson } ?: "[]"
+                    } else {
+                        it.currentOpsJson
+                    },
+                    status = if (ops.isSuccess) "当前操作 " + (ops.getOrNull()?.size ?: 0) + " 条" else it.status,
+                )
+            }
+        }
+    }
+
+    fun requestKillOp(opId: String) {
+        ctx.ensureWritable("killOp")
+        state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.KillOp,
+                    target = opId,
+                    message = "将 killOp opid=`" + opId + "`。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun killOpConfirmed() {
+        val opId = state.value.pendingDestructive?.target.orEmpty()
+        ctx.actions.run("killOp") {
+            val result = repository.killOp(opId)
+            state.update {
+                it.copy(
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
+                    maintenanceResultJson = result,
+                    status = "已发送 killOp：" + opId,
+                )
+            }
+            ctx.recordAudit("killOp", opId, result)
+            loadCurrentOps()
         }
     }
 }

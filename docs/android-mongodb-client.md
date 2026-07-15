@@ -89,3 +89,11 @@ The **高级** tab adds:
 * User/role create & drop (best-effort; privilege errors are shown)
 * Import JSON array into the selected collection and export collection JSON with limit
 
+## Next enhancements
+
+* Query history (local recent find/aggregate restore)
+* killOp for structured current operations
+* Collection validator view/update via collMod
+* Readonly connection profiles that block writes
+* Local destructive-operation audit log in Advanced tab
+

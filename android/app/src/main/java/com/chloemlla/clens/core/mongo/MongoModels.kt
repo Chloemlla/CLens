@@ -15,6 +15,7 @@ data class MongoConnectionProfile(
     val replicaSet: String = "",
     val tls: Boolean = false,
     val directConnection: Boolean = true,
+    val readOnly: Boolean = false,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {
@@ -106,6 +107,48 @@ data class MongoRoleSummary(
     val db: String,
     val rolesJson: String,
     val privilegesJson: String,
+)
+
+data class CurrentOpSummary(
+    val opId: String,
+    val op: String = "",
+    val ns: String = "",
+    val secsRunning: Long? = null,
+    val client: String = "",
+    val rawJson: String = "",
+)
+
+data class CollectionValidatorInfo(
+    val validatorJson: String = "{}",
+    val validationLevel: String = "strict",
+    val validationAction: String = "error",
+    val rawJson: String = "{}",
+)
+
+data class QueryHistoryEntry(
+    val id: String,
+    val modeAggregate: Boolean,
+    val database: String,
+    val collection: String,
+    val filterJson: String = "{}",
+    val sortJson: String = "{}",
+    val projectionJson: String = "{}",
+    val pipelineJson: String = "[]",
+    val createdAtMillis: Long = System.currentTimeMillis(),
+) {
+    val title: String
+        get() {
+            val mode = if (modeAggregate) "agg" else "find"
+            return mode + " " + database + "." + collection
+        }
+}
+
+data class AuditLogEntry(
+    val id: String,
+    val action: String,
+    val target: String,
+    val detail: String = "",
+    val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
 sealed class MongoAdminException(message: String, cause: Throwable? = null) : Exception(message, cause) {
