@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -132,24 +131,22 @@ internal fun PanelColumn(
     onDismissFeedback: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        Box(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(PaddingValues(16.dp)),
+    ) {
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(PaddingValues(16.dp)),
+                .fillMaxWidth()
+                .widthIn(max = 760.dp)
+                .align(Alignment.TopCenter),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 760.dp)
-                    .align(Alignment.TopCenter),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                StatusBanner(state = state, onDismiss = onDismissFeedback)
-                content()
-                Spacer(Modifier.height(12.dp))
-            }
+            StatusBanner(state = state, onDismiss = onDismissFeedback)
+            content()
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

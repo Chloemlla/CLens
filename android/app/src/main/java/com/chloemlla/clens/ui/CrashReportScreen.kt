@@ -243,25 +243,43 @@ internal fun CrashReportScreen(
         AlertDialog(
             onDismissRequest = { shareOptionsVisible = false },
             title = { Text(stringResource(R.string.crash_report_share_options_title)) },
-            text = { Text(stringResource(R.string.crash_report_share_options_message)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        shareOptionsVisible = false
-                        shareAsText(context, report)
-                    },
-                ) {
-                    Text(stringResource(R.string.crash_report_share_as_text))
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.crash_report_share_options_message))
+                    OutlinedButton(
+                        onClick = {
+                            shareOptionsVisible = false
+                            shareAsText(context, report)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.crash_report_share_as_text))
+                    }
+                    Text(
+                        text = stringResource(R.string.crash_report_share_as_text_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            shareOptionsVisible = false
+                            shareAsFile(context, report)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.crash_report_share_as_file))
+                    }
+                    Text(
+                        text = stringResource(R.string.crash_report_share_as_file_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             },
+            confirmButton = {},
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        shareOptionsVisible = false
-                        shareAsFile(context, report)
-                    },
-                ) {
-                    Text(stringResource(R.string.crash_report_share_as_file))
+                TextButton(onClick = { shareOptionsVisible = false }) {
+                    Text(stringResource(R.string.crash_report_share_cancel))
                 }
             },
         )

@@ -2,6 +2,7 @@ package com.chloemlla.clens.core.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.chloemlla.clens.core.crash.CrashBreadcrumbs
@@ -55,7 +56,7 @@ class MongoConnectionStore(context: Context) {
     }
 
     fun setActiveProfileId(profileId: String?) {
-        prefs.edit().putString(KEY_ACTIVE_ID, profileId.orEmpty()).apply()
+        prefs.edit { putString(KEY_ACTIVE_ID, profileId.orEmpty()) }
     }
 
     private fun writeProfiles(profiles: List<MongoConnectionProfile>) {
@@ -80,7 +81,7 @@ class MongoConnectionStore(context: Context) {
                 },
             )
         }
-        prefs.edit().putString(KEY_PROFILES, array.toString()).apply()
+        prefs.edit { putString(KEY_PROFILES, array.toString()) }
     }
 
     private fun parseProfiles(raw: String): List<MongoConnectionProfile> {

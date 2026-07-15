@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <!-- MongoDB endpoints are often LAN cleartext; TLS is still preferred when available. -->
-    <base-config cleartextTrafficPermitted="true" />
+<!-- Cleartext is intentionally allowed for common LAN MongoDB deployments; prefer TLS in production. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
 </network-security-config>

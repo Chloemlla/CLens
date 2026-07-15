@@ -1,7 +1,6 @@
 package com.chloemlla.clens.core.mongo
 
 import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 object MongoUriBuilder {
     fun build(profile: MongoConnectionProfile): String {
@@ -91,5 +90,6 @@ object MongoUriBuilder {
     }
 
     private fun encode(value: String): String =
-        URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+        // Use the String charset overload for minSdk 26 compatibility (Charset overload is API 33+).
+        URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 }
