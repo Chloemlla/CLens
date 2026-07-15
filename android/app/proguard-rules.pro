@@ -1,45 +1,81 @@
-# Release obfuscation is intentionally boundary-focused.
--keepattributes *Annotation*, InnerClasses, EnclosingMethod, Signature
--allowaccessmodification
--repackageclasses c
+# Release minify rules for CLens.
+# Prefer keep-by-package for app/Compose/third-party reflection surfaces.
+# Do NOT use -repackageclasses or allowoptimization on Application/Activity:
+# those settings have caused blank-screen startup failures under R8 full mode.
 
-# Android framework entry points declared in AndroidManifest.xml.
--keep,allowoptimization class com.chloemlla.clens.MainActivity {
-    public <init>();
+-keepattributes *Annotation*, InnerClasses, EnclosingMethod, Signature, Exceptions, RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations, AnnotationDefault
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# -----------------------------------------------------------------------------
+# App entry points + full app package
+# -----------------------------------------------------------------------------
+
+# Manifest components and everything they reach into the app package.
+-keep class com.chloemlla.clens.MainActivity { <init>(); }
+-keep class com.chloemlla.clens.ClensApplication { <init>(); }
+-keep class com.chloemlla.clens.** { *; }
+-keepclassmembers class com.chloemlla.clens.** {
+    <init>(...);
     public <methods>;
-    protected <methods>;
+    public <fields>;
 }
--keep,allowoptimization class com.chloemlla.clens.ClensApplication {
-    public <init>();
-    public <methods>;
-    protected <methods>;
-}
-
-# FileProvider is referenced directly from the manifest and its XML metadata.
--keep,allowoptimization class androidx.core.content.FileProvider {
-    public <init>();
-}
-
-# Enum helpers may be used by framework/runtime code and string comparisons.
 -keepclassmembers enum com.chloemlla.clens.** {
     public static final <fields>;
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
 
-# AndroidX Security Crypto is used for encrypted connection secrets.
+# Kotlin metadata / coroutines used across ViewModels and Mongo session code.
+-keep class kotlin.Metadata { *; }
+-keepclassmembers class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# FileProvider is referenced from the manifest and share path XML metadata.
+-keep class androidx.core.content.FileProvider {
+    <init>();
+    public <methods>;
+}
+
+# -----------------------------------------------------------------------------
+# Compose / lifecycle / ViewModel
+# -----------------------------------------------------------------------------
+
+# Keep Compose runtime and compiler-generated classes for setContent startup.
+-keep class androidx.compose.** { *; }
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.ui.** { *; }
+-keep class androidx.compose.material3.** { *; }
+-keep class androidx.lifecycle.** { *; }
+-keep class androidx.activity.ComponentActivity { *; }
+-keep class androidx.activity.compose.** { *; }
+-keep class * extends androidx.lifecycle.ViewModel { *; }
+-keep class * implements androidx.lifecycle.ViewModelProvider$Factory { *; }
+-dontwarn androidx.compose.**
+-dontwarn androidx.lifecycle.**
+
+# -----------------------------------------------------------------------------
+# Encrypted connection storage (Security Crypto + Tink)
+# -----------------------------------------------------------------------------
+
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
 -dontwarn androidx.security.crypto.**
+-dontwarn com.google.crypto.tink.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn javax.annotation.concurrent.**
+
+# -----------------------------------------------------------------------------
+# MongoDB driver + Android SASL stubs
+# -----------------------------------------------------------------------------
 
 # MongoDB Java driver uses reflection/service loading heavily.
 # Keep the full driver surface, including nested SASL authenticator classes.
 # CLens never configures StreamFactoryFactory, so runtime uses default NIO.
 # Do NOT use a negation keep filter here: excluding
-# com.mongodb.internal.connection.netty.** has been observed to leave SCRAM
-# handshake classes (SaslAuthenticator$SaslClientImpl) missing at runtime
-# under R8 full mode, causing:
-#   NoClassDefFoundError: com.mongodb.internal.connection.SaslAuthenticator$SaslClientImpl
-# A retained optional Netty constructor may only produce a benign R8 type-check
-# warning during minify; that is preferable to an auth-path crash.
+# com.mongodb.internal.connection.netty.** previously correlated with release
+# NoClassDefFoundError for SaslAuthenticator$SaslClientImpl during SCRAM.
 -keep class com.mongodb.** { *; }
 -keep class org.bson.** { *; }
 -keep class com.mongodb.internal.connection.SaslAuthenticator { *; }
@@ -58,26 +94,16 @@
 -dontwarn javax.net.ssl.**
 -dontwarn org.slf4j.**
 -dontwarn org.ietf.jgss.**
--dontwarn javax.security.sasl.**
 
-# Android lacks the JDK SASL module. CLens ships minimal stubs under
+# Android lacks the JDK SASL module. CLens ships minimal Kotlin stubs under
 # android/app/src/main/java/javax/security/sasl so Mongo SCRAM classes can load.
+# Keep them; do not dontwarn them away.
 -keep class javax.security.sasl.** { *; }
 -keep interface javax.security.sasl.** { *; }
+-keepclassmembers class javax.security.sasl.** { *; }
 
-# Compose and lifecycle warnings are dependency-internal.
--dontwarn androidx.compose.**
--dontwarn androidx.lifecycle.**
-
-# AndroidX Security Crypto depends on Tink; annotation-only and optional API refs are not on Android.
--keep class com.google.crypto.tink.** { *; }
--dontwarn com.google.crypto.tink.**
--dontwarn com.google.errorprone.annotations.**
--dontwarn javax.annotation.**
--dontwarn javax.annotation.concurrent.**
-
-# MongoDB reactive stack may pull optional Reactor / Micrometer / BlockHound service metadata.
-# These classes are not required for the coroutine driver path used by CLens.
+# MongoDB reactive stack may pull optional Reactor / Micrometer / BlockHound
+# service metadata. Not required for the coroutine driver path used by CLens.
 -dontwarn reactor.**
 -dontwarn io.micrometer.**
 -dontwarn reactor.blockhound.**

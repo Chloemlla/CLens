@@ -104,6 +104,7 @@ GitHub Packages resolution for `lumen-crash` expects either:
 * CI runs `.github/scripts/verify-mongo-sasl-retention.py` after `assembleProductionRelease` and fails the build if `SaslAuthenticator$SaslClientImpl` is absent from the release APK/DEX.
 * `MongoSessionManager` preloads SCRAM classes on the coroutine worker before opening sockets, so a linkage failure becomes a UI error instead of an uncaught async-thread crash.
 * Android does not ship the JDK `javax.security.sasl` module. CLens includes minimal **Kotlin** stubs under `android/app/src/main/java/javax/security/sasl` so Mongo SCRAM classes that implement `SaslClient` can load while keeping the main source tree Kotlin-only. Real SCRAM crypto stays inside the Mongo driver (`ScramShaSaslClient`); GSSAPI/PLAIN remain unsupported on Android.
+* App-side ProGuard keeps the full `com.chloemlla.clens.**` package, Compose/lifecycle entry surfaces, Security Crypto/Tink, and SASL stubs. Do **not** reintroduce `-repackageclasses` or `allowoptimization` on `Application`/`Activity`: those settings can blank-crash Compose startup under R8 full mode.
 
 ## Cleartext MongoDB
 
