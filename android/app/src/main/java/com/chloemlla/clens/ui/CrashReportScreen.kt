@@ -331,7 +331,7 @@ private fun CrashReportActionPanel(
         ) {
             OutlinedButton(onClick = onCopyId, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.ContentCopy, contentDescription = null)
-                Spacer(Modifier = Modifier.size(8.dp))
+                Spacer(modifier = Modifier.size(8.dp))
                 Text(stringResource(R.string.crash_report_copy_id))
             }
             OutlinedButton(onClick = onCopyReport, modifier = Modifier.fillMaxWidth()) {

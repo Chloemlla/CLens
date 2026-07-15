@@ -91,7 +91,7 @@ class MongoSessionManager {
         return MongoClient.create(settings)
     }
 
-    private fun readVersion(client: MongoClient): String? {
+    private suspend fun readVersion(client: MongoClient): String? {
         return runCatching {
             val buildInfo = client.getDatabase("admin").runCommand(Document("buildInfo", 1))
             buildInfo["version"]?.toString()
