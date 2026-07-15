@@ -22,6 +22,8 @@ import org.bson.Document
 import org.bson.json.JsonMode
 import org.bson.json.JsonWriterSettings
 
+private const val MAX_UI_JSON_CHARS = 48_000
+
 class MongoAdminRepository(
     private val sessionManager: MongoSessionManager,
 ) {
@@ -325,7 +327,7 @@ class MongoAdminRepository(
             host = status?.stringValue("host")?.ifBlank { null }
                 ?: system?.stringValue("hostname")?.ifBlank { null },
             process = status?.stringValue("process")?.ifBlank { null },
-            rawStatusJson = pretty(status ?: Document("ok", 0)),
+            rawStatusJson = truncateForUi(pretty(status ?: Document("ok", 0))),
             notes = notes,
         )
     }
@@ -805,6 +807,16 @@ class MongoAdminRepository(
     private fun pretty(document: Document?): String {
         if (document == null) return "{}"
         return document.toJson(prettyJsonSettings)
+    }
+
+    /**
+     * Compose OutlinedTextField cannot measure extremely large strings (Constraints overflow).
+     * Keep a readable head of serverStatus JSON for the Admin panel.
+     */
+    private fun truncateForUi(value: String, maxChars: Int = MAX_UI_JSON_CHARS): String {
+        if (value.length <= maxChars) return value
+        val omitted = value.length - maxChars
+        return value.take(maxChars) + "\n\n/* truncated $omitted chars for UI safety */"
     }
 
     private fun requireName(value: String, label: String): String {
