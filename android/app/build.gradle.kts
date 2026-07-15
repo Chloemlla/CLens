@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val lumenCrashSdkVersion: String =
+    providers.fileContents(layout.projectDirectory.file("../lumen-crash.version"))
+        .asText
+        .orNull
+        ?.lineSequence()
+        ?.map { it.trim() }
+        ?.firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+        ?: "0.1.0-8e73f18d"
+
 fun providerString(name: String, defaultValue: String): String =
     providers.environmentVariable(name)
         .orNull
@@ -151,10 +160,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.mongodb:mongodb-driver-kotlin-coroutine:5.2.1")
     implementation("org.mongodb:bson-kotlin:5.2.1")
-    implementation("com.chloemlla.lumen:lumen-crash:0.1.0")
+    implementation("com.chloemlla.lumen:lumen-crash:$lumenCrashSdkVersion")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+

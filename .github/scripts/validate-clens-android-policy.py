@@ -35,6 +35,7 @@ for required in (
     "android/app/src/main/java/com/chloemlla/clens/MainActivity.kt",
     "android/app/proguard-rules.pro",
     ".github/workflows/clens-android.yml",
+    "android/lumen-crash.version",
 ):
     require_file(required)
 
@@ -52,6 +53,9 @@ require_contains("android/app/build.gradle.kts", 'create("production")')
 require_contains("android/app/build.gradle.kts", "mongodb-driver-kotlin-coroutine")
 require_contains("android/app/build.gradle.kts", "com.chloemlla.lumen:lumen-crash")
 require_contains("android/settings.gradle.kts", "maven.pkg.github.com/Chloemlla/Project-Lumen")
+require_contains("android/settings.gradle.kts", "local-maven")
+require_contains("android/app/build.gradle.kts", "lumenCrashSdkVersion")
+require_contains(".github/workflows/clens-android.yml", "fetch-lumen-crash-sdk.py")
 require_contains("android/app/src/main/java/com/chloemlla/clens/ClensApplication.kt", "LumenCrash.install")
 require_contains("android/app/src/main/java/com/chloemlla/clens/MainActivity.kt", "LumenCrashReportScreen")
 require_contains("android/app/build.gradle.kts", "compileSdk = 37")

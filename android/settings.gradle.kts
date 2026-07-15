@@ -11,6 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Preferred offline/auth-free path: release assets materialized into local-maven by CI.
+        maven {
+            name = "LumenCrashLocal"
+            url = uri("${rootDir}/local-maven")
+        }
         maven {
             name = "GitHubPackagesProjectLumen"
             url = uri("https://maven.pkg.github.com/Chloemlla/Project-Lumen")

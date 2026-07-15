@@ -52,16 +52,18 @@ Jobs:
 
 ## Crash reporting
 
-CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project Lumen via GitHub Packages:
+CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project Lumen.
 
-* Maven repo: `https://maven.pkg.github.com/Chloemlla/Project-Lumen`
-* Coordinates: `com.chloemlla.lumen:lumen-crash:0.1.0`
+* Version pin: `android/lumen-crash.version` (currently `0.1.0-8e73f18d`)
+* Coordinates: `com.chloemlla.lumen:lumen-crash:<pinned-version>`
+* Preferred resolve path: GitHub Release assets materialized into `android/local-maven/` by `.github/scripts/fetch-lumen-crash-sdk.py`
+* Fallback resolve path: GitHub Packages `https://maven.pkg.github.com/Chloemlla/Project-Lumen`
 * Install early in `ClensApplication.attachBaseContext`
 * Gate startup UI with `LumenCrashReportScreen`
 * Host product copy overrides live in `res/values*/strings.xml`
 * Host-side `SecretSanitizer` remains for Mongo/token redaction in action errors
 
-Local package resolution uses `gpr.user` / `gpr.key` in `~/.gradle/gradle.properties`, or `GITHUB_ACTOR` / `GITHUB_TOKEN` in CI.
+CI runs the fetch script before Gradle. Optional repository secret `LUMEN_CRASH_READ_PACKAGES_TOKEN` is only needed if Release asset download requires broader access than the default token.
 
 ## Secrets
 
