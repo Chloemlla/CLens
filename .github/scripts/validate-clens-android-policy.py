@@ -46,6 +46,9 @@ if java_files:
 
 require_contains("android/app/src/main/AndroidManifest.xml", 'android:allowBackup="false"')
 require_contains("android/app/build.gradle.kts", "isMinifyEnabled = true")
+require_contains("android/app/proguard-rules.pro", "CrashAuthorAttribution")
+require_contains("android/app/proguard-rules.pro", "com.chloemlla.lumen.crash.**")
+require_contains("android/app/proguard-rules.pro", "Lumen Crash SDK minify exemption")
 require_contains("android/app/build.gradle.kts", "isShrinkResources = true")
 require_contains("android/app/build.gradle.kts", 'getDefaultProguardFile("proguard-android-optimize.txt")')
 require_contains("android/app/build.gradle.kts", 'applicationId = "com.chloemlla.clens"')

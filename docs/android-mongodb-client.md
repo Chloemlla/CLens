@@ -69,6 +69,16 @@ CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project 
 
 CI always runs the fetch script before Gradle so `latest` is resolved at build time.
 
+## Lumen Crash ProGuard exemption
+
+Host release minify keeps the official third-party exemption block from `lumen-crash/README.md` in `android/app/proguard-rules.pro`:
+
+* keep `CrashAuthorAttribution` constants and `AuthorIntegrity` entry points
+* keep public SDK API used by host integration
+* package-level keep for `com.chloemlla.lumen.crash.**`
+
+This is required because author integrity is fail-closed under R8.
+
 ## Secrets
 
 Release signing expects GitHub repository secrets:

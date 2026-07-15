@@ -66,14 +66,31 @@
 -dontwarn reactor.blockhound.**
 -dontwarn reactor.blockhound.integration.**
 
-# lumen-crash SDK: author integrity is fail-closed and string-constant sensitive.
-# Keep the package fully so R8 repackaging/optimization cannot break install-time checks.
--keep class com.chloemlla.lumen.crash.** { *; }
--keepclassmembers class com.chloemlla.lumen.crash.CrashAuthorAttribution {
+############################################################
+# Lumen Crash SDK minify exemption
+# Artifact: com.chloemlla.lumen:lumen-crash
+# Source: lumen-crash/README.md "Required third-party minify exemption"
+# Put this in the host app proguard-rules.pro
+############################################################
+
+# Required: author attribution + integrity checks
+-keep class com.chloemlla.lumen.crash.CrashAuthorAttribution {
     public static final java.lang.String *;
 }
--keepclassmembers class com.chloemlla.lumen.crash.AuthorIntegrity {
-    public static *** verifyOrThrow(...);
+-keep class com.chloemlla.lumen.crash.AuthorIntegrity {
+    public static *** verifyOrThrow();
     public static *** fingerprintHex();
 }
--keep class com.chloemlla.lumen.crash.ui.** { *; }
+
+# Required backup: keep public SDK API used by host integration
+-keep class com.chloemlla.lumen.crash.LumenCrash { *; }
+-keep class com.chloemlla.lumen.crash.LumenCrashConfig { *; }
+-keep class com.chloemlla.lumen.crash.CrashReport { *; }
+-keep class com.chloemlla.lumen.crash.CrashAppInfo { *; }
+-keep class com.chloemlla.lumen.crash.CrashReportStore { *; }
+-keep class com.chloemlla.lumen.crash.CrashBreadcrumbs { *; }
+-keep class com.chloemlla.lumen.crash.ui.LumenCrashReportScreenKt { *; }
+
+# Package-level exemption (safe default for third-party hosts)
+-keep class com.chloemlla.lumen.crash.** { *; }
+-dontwarn com.chloemlla.lumen.crash.**
