@@ -65,3 +65,15 @@
 -dontwarn io.micrometer.**
 -dontwarn reactor.blockhound.**
 -dontwarn reactor.blockhound.integration.**
+
+# lumen-crash SDK: author integrity is fail-closed and string-constant sensitive.
+# Keep the package fully so R8 repackaging/optimization cannot break install-time checks.
+-keep class com.chloemlla.lumen.crash.** { *; }
+-keepclassmembers class com.chloemlla.lumen.crash.CrashAuthorAttribution {
+    public static final java.lang.String *;
+}
+-keepclassmembers class com.chloemlla.lumen.crash.AuthorIntegrity {
+    public static *** verifyOrThrow(...);
+    public static *** fingerprintHex();
+}
+-keep class com.chloemlla.lumen.crash.ui.** { *; }
