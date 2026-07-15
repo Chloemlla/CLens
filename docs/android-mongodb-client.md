@@ -59,3 +59,9 @@ Release signing expects GitHub repository secrets:
 * `KEY_PASSWORD`
 
 Use `setup-android-signing.ps1` to generate and push these values.
+
+## Release minify notes
+
+* Mongo driver jars include an optional Netty stream factory. CLens uses the default NIO `MongoClientSettings` path only.
+* ProGuard keeps `com.mongodb.**` while excluding `com.mongodb.internal.connection.netty.**` so R8 does not retain the untyped Netty constructor warning during `minifyProductionReleaseWithR8`.
+* Optional Reactor / Micrometer / BlockHound service metadata is excluded from packaging and silenced with `-dontwarn`.

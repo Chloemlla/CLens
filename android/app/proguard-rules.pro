@@ -35,10 +35,18 @@
 -dontwarn androidx.security.crypto.**
 
 # MongoDB Java driver uses reflection/service loading heavily.
--keep class com.mongodb.** { *; }
+# Keep the driver surface, but exclude the optional Netty transport.
+# CLens always builds MongoClientSettings without StreamFactoryFactory, so the
+# default NIO socket factory is used. A broad com.mongodb.** keep forces R8 to
+# retain NettyStreamFactoryFactory even though Netty is not on the Android
+# classpath, which produces:
+#   "NettyStreamFactoryFactory.<init>(Builder) does not type check..."
+-keep class !com.mongodb.internal.connection.netty.**, com.mongodb.** { *; }
 -keep class org.bson.** { *; }
 -dontwarn com.mongodb.**
 -dontwarn org.bson.**
+-dontwarn com.mongodb.internal.connection.netty.**
+-dontwarn io.netty.**
 -dontwarn javax.naming.**
 -dontwarn javax.net.ssl.**
 -dontwarn org.slf4j.**
@@ -61,4 +69,3 @@
 -dontwarn io.micrometer.**
 -dontwarn reactor.blockhound.**
 -dontwarn reactor.blockhound.integration.**
-
