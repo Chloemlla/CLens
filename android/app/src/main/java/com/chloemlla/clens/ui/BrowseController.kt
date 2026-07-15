@@ -17,10 +17,16 @@ class BrowseController(
                 collections = emptyList(),
                 documents = emptyList(),
                 indexes = emptyList(),
+                databaseStatsJson = "",
+                databaseStatsError = null,
+                selectedCollectionStats = null,
+                collectionStatsError = null,
+                maintenanceResultJson = "",
             )
         }
         if (value.isNotBlank() && state.value.isConnected) {
             refreshCollections()
+            refreshDatabaseStats()
         }
     }
 
@@ -31,7 +37,13 @@ class BrowseController(
                 documents = emptyList(),
                 indexes = emptyList(),
                 documentSkip = 0,
+                selectedCollectionStats = null,
+                collectionStatsError = null,
+                maintenanceResultJson = "",
             )
+        }
+        if (value.isNotBlank() && state.value.isConnected) {
+            refreshCollectionStats()
         }
     }
 
@@ -237,6 +249,10 @@ class BrowseController(
     }
 
     fun insertDocuments() {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持写入文档。") }
+            return
+        }
         ctx.actions.run("插入文档") {
             val current = state.value
             val count = repository.insertDocuments(
@@ -250,6 +266,10 @@ class BrowseController(
     }
 
     fun replaceSelectedDocument() {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持替换文档。") }
+            return
+        }
         ctx.actions.run("替换文档") {
             val current = state.value
             val filter = ctx.extractIdFilter(current.selectedDocumentJson)
@@ -266,6 +286,10 @@ class BrowseController(
     }
 
     fun updateDocuments(multi: Boolean) {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持更新文档。") }
+            return
+        }
         ctx.actions.run(if (multi) "批量更新" else "更新一条") {
             val current = state.value
             val modified = repository.updateDocuments(
@@ -281,6 +305,10 @@ class BrowseController(
     }
 
     fun deleteDocuments(multi: Boolean) {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持删除文档。") }
+            return
+        }
         if (multi) {
             requestDeleteMany()
             return
@@ -301,6 +329,10 @@ class BrowseController(
     }
 
     fun requestDeleteMany() {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持批量删除。") }
+            return
+        }
         state.update {
             it.copy(
                 pendingDestructive = PendingDestructiveAction(
@@ -327,4 +359,86 @@ class BrowseController(
             state.update { it.copy(status = "删除完成，deleted=" + deleted) }
         }
     }
+
+    fun refreshDatabaseStats() {
+        val database = state.value.selectedDatabase
+        if (database.isBlank()) return
+        ctx.actions.run("刷新库统计") {
+            val stats = runCatching { repository.databaseStats(database) }
+            state.update {
+                it.copy(
+                    databaseStatsJson = stats.getOrDefault(""),
+                    databaseStatsError = stats.exceptionOrNull()?.message,
+                    status = if (stats.isSuccess) "数据库统计已更新" else it.status,
+                )
+            }
+        }
+    }
+
+    fun refreshCollectionStats() {
+        val database = state.value.selectedDatabase
+        val collection = state.value.selectedCollection
+        if (database.isBlank() || collection.isBlank()) return
+        ctx.actions.run("刷新集合统计") {
+            val stats = runCatching { repository.collectionStats(database, collection) }
+            state.update {
+                it.copy(
+                    selectedCollectionStats = stats.getOrNull(),
+                    collectionStatsError = stats.exceptionOrNull()?.message,
+                    status = if (stats.isSuccess) "集合统计已更新" else it.status,
+                )
+            }
+        }
+    }
+
+    fun requestCompactCollection() {
+        val collection = state.value.selectedCollection
+        if (collection.isBlank() || state.value.isSelectedView) return
+        state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.CompactCollection,
+                    target = collection,
+                    message = "将对集合 `" + state.value.selectedDatabase + "." + collection + "` 执行 compact。此操作可能长时间锁表。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun compactCollectionConfirmed() {
+        ctx.actions.run("压缩集合") {
+            val database = state.value.selectedDatabase
+            val collection = state.value.selectedCollection
+            val result = repository.compactCollection(database, collection)
+            state.update {
+                it.copy(
+                    maintenanceResultJson = result,
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
+                    status = "compact 完成",
+                )
+            }
+        }
+    }
+
+    fun validateSelectedCollection() {
+        val database = state.value.selectedDatabase
+        val collection = state.value.selectedCollection
+        if (database.isBlank() || collection.isBlank()) return
+        ctx.actions.run("校验集合") {
+            val result = repository.validateCollection(database, collection)
+            state.update {
+                it.copy(
+                    maintenanceResultJson = result,
+                    status = "validate 完成",
+                )
+            }
+        }
+    }
+
+    fun setResultViewMode(mode: ResultViewMode) {
+        state.update { it.copy(resultViewMode = mode) }
+    }
+
 }

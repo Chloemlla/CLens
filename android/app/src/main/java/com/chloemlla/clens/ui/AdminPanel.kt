@@ -43,12 +43,16 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
 
         SectionTitle(
             text = "索引",
-            subtitle = "当前集合：" + state.selectedDatabase + "." + state.selectedCollection,
+            subtitle = "当前集合：" + state.selectedDatabase + "." + state.selectedCollection +
+                if (state.isSelectedView) "（view）" else "",
         )
+        if (state.isSelectedView) {
+            InfoCard(title = "视图限制", lines = listOf("MongoDB view 不支持索引创建/删除。"))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 onClick = viewModel::refreshIndexes,
-                enabled = !state.loading && state.selectedCollection.isNotBlank(),
+                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
             ) { Text("刷新索引") }
         }
         JsonField("Keys JSON", state.indexKeysJson, !state.loading) {
@@ -75,7 +79,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
         FlagRow("sparse", state.indexSparse, !state.loading) { viewModel.setIndexFlags(sparse = it) }
         Button(
             onClick = viewModel::createIndex,
-            enabled = !state.loading && state.selectedCollection.isNotBlank(),
+            enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
         ) { Text("创建索引") }
 
         state.indexes.forEach { index ->
@@ -95,7 +99,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     Text(options, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
                         onClick = { viewModel.requestDropIndex(index.name) },
-                        enabled = !state.loading && index.name != "_id_",
+                        enabled = !state.loading && !state.isSelectedView && index.name != "_id_",
                     ) { Text("删除索引") }
                 }
             }

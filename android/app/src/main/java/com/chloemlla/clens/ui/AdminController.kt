@@ -29,6 +29,10 @@ class AdminController(
     }
 
     fun refreshIndexes() {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持索引管理。", indexes = emptyList()) }
+            return
+        }
         ctx.actions.run("刷新索引") {
             val current = state.value
             val indexes = repository.listIndexes(current.selectedDatabase, current.selectedCollection)
@@ -42,6 +46,10 @@ class AdminController(
     }
 
     fun createIndex() {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持创建索引。") }
+            return
+        }
         ctx.actions.run("创建索引") {
             val current = state.value
             val expire = current.indexExpireAfterSeconds.trim()
@@ -62,6 +70,10 @@ class AdminController(
     }
 
     fun requestDropIndex(name: String) {
+        if (state.value.isSelectedView) {
+            state.update { it.copy(error = "视图不支持删除索引。") }
+            return
+        }
         if (name.isBlank() || name == "_id_") return
         state.update {
             it.copy(

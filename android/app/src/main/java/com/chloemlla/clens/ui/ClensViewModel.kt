@@ -85,9 +85,19 @@ class ClensViewModel(
     fun deleteDocuments(multi: Boolean) = browse.deleteDocuments(multi)
     fun requestDeleteMany() = browse.requestDeleteMany()
     fun deleteManyConfirmed() = browse.deleteManyConfirmed()
+    fun refreshDatabaseStats() = browse.refreshDatabaseStats()
+    fun refreshCollectionStats() = browse.refreshCollectionStats()
+    fun requestCompactCollection() = browse.requestCompactCollection()
+    fun compactCollectionConfirmed() = browse.compactCollectionConfirmed()
+    fun validateSelectedCollection() = browse.validateSelectedCollection()
+    fun setResultViewMode(mode: ResultViewMode) {
+        browse.setResultViewMode(mode)
+        query.setResultViewMode(mode)
+    }
 
     fun setQueryModeAggregate(enabled: Boolean) = query.setQueryModeAggregate(enabled)
     fun runQuery(withExplain: Boolean = false) = query.runQuery(withExplain)
+    fun explainAggregate() = query.explainAggregate()
 
     fun setIndexFlags(unique: Boolean? = null, sparse: Boolean? = null) = admin.setIndexFlags(unique, sparse)
     fun refreshIndexes() = admin.refreshIndexes()
@@ -123,6 +133,7 @@ class ClensViewModel(
             DestructiveAction.DropCollection -> browse.dropCollectionConfirmed()
             DestructiveAction.DeleteMany -> browse.deleteManyConfirmed()
             DestructiveAction.DropIndex -> admin.dropIndexConfirmed()
+            DestructiveAction.CompactCollection -> browse.compactCollectionConfirmed()
         }
     }
 

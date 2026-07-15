@@ -24,22 +24,57 @@ class QueryController(
         }
     }
 
+    fun explainAggregate() {
+        ctx.actions.run("Aggregate Explain") {
+            val current = state.value
+            val explain = repository.explainAggregate(
+                current.selectedDatabase,
+                current.selectedCollection,
+                current.queryPipelineJson,
+            )
+            state.update {
+                it.copy(
+                    explainJson = explain,
+                    status = "聚合 explain 完成",
+                )
+            }
+        }
+    }
+
+    fun setResultViewMode(mode: ResultViewMode) {
+        state.update { it.copy(resultViewMode = mode) }
+    }
+
     fun runQuery(withExplain: Boolean = false) {
         ctx.actions.run(if (withExplain) "Explain" else "执行查询") {
             val current = state.value
             if (current.queryModeAggregate) {
-                val result = repository.aggregate(
-                    current.selectedDatabase,
-                    current.selectedCollection,
-                    current.queryPipelineJson,
-                )
-                state.update {
-                    it.copy(
-                        queryResults = result.documents,
-                        queryDurationMillis = result.durationMillis,
-                        explainJson = "",
-                        status = "聚合返回 " + result.documents.size + " 条 · " + result.durationMillis + "ms",
+                if (withExplain) {
+                    val explain = repository.explainAggregate(
+                        current.selectedDatabase,
+                        current.selectedCollection,
+                        current.queryPipelineJson,
                     )
+                    state.update {
+                        it.copy(
+                            explainJson = explain,
+                            status = "聚合 explain 完成",
+                        )
+                    }
+                } else {
+                    val result = repository.aggregate(
+                        current.selectedDatabase,
+                        current.selectedCollection,
+                        current.queryPipelineJson,
+                    )
+                    state.update {
+                        it.copy(
+                            queryResults = result.documents,
+                            queryDurationMillis = result.durationMillis,
+                            explainJson = "",
+                            status = "聚合返回 " + result.documents.size + " 条 · " + result.durationMillis + "ms",
+                        )
+                    }
                 }
             } else {
                 val page = repository.findDocuments(

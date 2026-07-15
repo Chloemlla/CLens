@@ -6,11 +6,17 @@ import com.chloemlla.clens.core.mongo.IndexSummary
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.ServerOverview
 
+enum class ResultViewMode {
+    Json,
+    Table,
+}
+
 enum class DestructiveAction {
     DropDatabase,
     DropCollection,
     DeleteMany,
     DropIndex,
+    CompactCollection,
 }
 
 data class PendingDestructiveAction(
@@ -56,6 +62,12 @@ data class ClensUiState(
     val newDatabaseName: String = "",
     val newCollectionName: String = "",
     val renameCollectionName: String = "",
+    val databaseStatsJson: String = "",
+    val databaseStatsError: String? = null,
+    val selectedCollectionStats: CollectionSummary? = null,
+    val collectionStatsError: String? = null,
+    val maintenanceResultJson: String = "",
+    val resultViewMode: ResultViewMode = ResultViewMode.Json,
     val documents: List<String> = emptyList(),
     val documentCountHint: Long? = null,
     val documentSkip: Int = 0,
@@ -94,4 +106,8 @@ data class ClensUiState(
     val isConnected: Boolean = connectedProfileId != null
     val activeProfile: MongoConnectionProfile? = profiles.firstOrNull { it.id == activeProfileId }
     val connectedProfile: MongoConnectionProfile? = profiles.firstOrNull { it.id == connectedProfileId }
+    val selectedCollectionType: String
+        get() = collections.firstOrNull { it.name == selectedCollection }?.type ?: "collection"
+    val isSelectedView: Boolean
+        get() = selectedCollectionType.equals("view", ignoreCase = true)
 }

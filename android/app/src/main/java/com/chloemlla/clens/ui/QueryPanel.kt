@@ -17,7 +17,7 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         ClensAppHeader(state = state)
         SectionTitle(
             text = "查询控制台",
-            subtitle = "Find / Aggregate / Explain，结果以 JSON 展示。",
+            subtitle = "Find / Aggregate / Explain，结果支持 JSON 与表格。",
             icon = Icons.AutoMirrored.Outlined.ManageSearch,
         )
         if (!state.isConnected) {
@@ -25,6 +25,9 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
             return@PanelColumn
         }
         Text("当前目标：" + state.selectedDatabase.ifBlank { "-" } + "." + state.selectedCollection.ifBlank { "-" })
+        if (state.isSelectedView) {
+            InfoCard(title = "查询视图", lines = listOf("当前目标是 view，可查询，不可在管理页维护索引。"))
+        }
         FlagRow("聚合模式", state.queryModeAggregate, !state.loading, viewModel::setQueryModeAggregate)
         if (state.queryModeAggregate) {
             JsonField("Pipeline JSON 数组", state.queryPipelineJson, !state.loading, minLines = 8) {
@@ -42,11 +45,15 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { viewModel.runQuery(false) }, enabled = !state.loading) { Text("执行") }
+            Button(onClick = { viewModel.runQuery(false) }, enabled = !state.loading && state.selectedCollection.isNotBlank()) { Text("执行") }
             OutlinedButton(
                 onClick = { viewModel.runQuery(true) },
-                enabled = !state.loading && !state.queryModeAggregate,
+                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.queryModeAggregate,
             ) { Text("Find + Explain") }
+            OutlinedButton(
+                onClick = viewModel::explainAggregate,
+                enabled = !state.loading && state.selectedCollection.isNotBlank() && state.queryModeAggregate,
+            ) { Text("Aggregate Explain") }
         }
         state.queryDurationMillis?.let { duration ->
             Text(
@@ -55,9 +62,17 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        state.queryResults.forEachIndexed { index, doc ->
-            DocumentSnippet(title = "结果 #" + (index + 1), json = doc, selected = false, onClick = {})
-        }
+        ResultViewModeToggle(
+            mode = state.resultViewMode,
+            enabled = !state.loading,
+            onChange = viewModel::setResultViewMode,
+        )
+        DocumentResultList(
+            documents = state.queryResults,
+            mode = state.resultViewMode,
+            titlePrefix = "结果",
+            startIndex = 1,
+        )
         if (state.explainJson.isNotBlank()) {
             JsonField("Explain", state.explainJson, enabled = false, minLines = 8) {}
         }

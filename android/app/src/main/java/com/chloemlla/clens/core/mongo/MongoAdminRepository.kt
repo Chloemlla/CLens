@@ -327,6 +327,59 @@ class MongoAdminRepository(
         users.mapNotNull { it.stringValue("user").takeIf(String::isNotBlank) }.sorted()
     }
 
+
+    suspend fun validateCollection(database: String, collection: String): String = withContext(Dispatchers.IO) {
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        pretty(
+            db.runCommand(
+                Document(
+                    mapOf(
+                        "validate" to requireName(collection, "集合"),
+                        "full" to false,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    suspend fun compactCollection(database: String, collection: String): String = withContext(Dispatchers.IO) {
+        val db = sessionManager.requireClient().getDatabase(requireName(database, "数据库"))
+        pretty(
+            db.runCommand(
+                Document(
+                    mapOf(
+                        "compact" to requireName(collection, "集合"),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    suspend fun explainAggregate(
+        database: String,
+        collection: String,
+        pipelineJson: String,
+    ): String = withContext(Dispatchers.IO) {
+        val pipeline = parsePipeline(pipelineJson)
+        val command = Document(
+            mapOf(
+                "explain" to Document(
+                    mapOf(
+                        "aggregate" to requireName(collection, "集合"),
+                        "pipeline" to pipeline,
+                        "cursor" to Document(),
+                    ),
+                ),
+                "verbosity" to "executionStats",
+            ),
+        )
+        pretty(
+            sessionManager.requireClient()
+                .getDatabase(requireName(database, "数据库"))
+                .runCommand(command),
+        )
+    }
+
     suspend fun currentOps(): String = withContext(Dispatchers.IO) {
         val result = sessionManager.requireClient()
             .getDatabase("admin")

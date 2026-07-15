@@ -1,5 +1,8 @@
 package com.chloemlla.clens.ui
 
+import org.json.JSONArray
+import org.json.JSONObject
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -310,4 +313,141 @@ internal fun DocumentSnippet(title: String, json: String, selected: Boolean, onC
             Text(json, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 12, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+
+@Composable
+internal fun ResultViewModeToggle(
+    mode: ResultViewMode,
+    enabled: Boolean,
+    onChange: (ResultViewMode) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = mode == ResultViewMode.Json,
+            onClick = { onChange(ResultViewMode.Json) },
+            enabled = enabled,
+            label = { Text("JSON") },
+        )
+        FilterChip(
+            selected = mode == ResultViewMode.Table,
+            onClick = { onChange(ResultViewMode.Table) },
+            enabled = enabled,
+            label = { Text("表格") },
+        )
+    }
+}
+
+internal fun topLevelFields(documents: List<String>, maxDocs: Int = 20): List<String> {
+    val keys = linkedSetOf<String>()
+    documents.take(maxDocs).forEach { raw ->
+        runCatching {
+            val obj = JSONObject(raw)
+            obj.keys().forEach { key -> keys += key }
+        }
+    }
+    return keys.toList()
+}
+
+@Composable
+internal fun DocumentResultList(
+    documents: List<String>,
+    mode: ResultViewMode,
+    selectedJson: String = "",
+    titlePrefix: String = "文档",
+    startIndex: Int = 1,
+    onSelect: (String) -> Unit = {},
+) {
+    if (documents.isEmpty()) {
+        Text("暂无结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    when (mode) {
+        ResultViewMode.Json -> {
+            documents.forEachIndexed { index, doc ->
+                DocumentSnippet(
+                    title = titlePrefix + " #" + (startIndex + index),
+                    json = doc,
+                    selected = doc == selectedJson,
+                    onClick = { onSelect(doc) },
+                )
+            }
+        }
+        ResultViewMode.Table -> {
+            val fields = topLevelFields(documents)
+            if (fields.isEmpty()) {
+                Text("无法从表结果提取字段，已回退 JSON。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                documents.forEachIndexed { index, doc ->
+                    DocumentSnippet(
+                        title = titlePrefix + " #" + (startIndex + index),
+                        json = doc,
+                        selected = doc == selectedJson,
+                        onClick = { onSelect(doc) },
+                    )
+                }
+            } else {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            fields.forEach { field ->
+                                Text(
+                                    text = field,
+                                    modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        documents.forEach { raw ->
+                            val obj = runCatching { JSONObject(raw) }.getOrNull()
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.clickable { onSelect(raw) },
+                            ) {
+                                fields.forEach { field ->
+                                    val value = obj?.opt(field)?.toString() ?: ""
+                                    Text(
+                                        text = value,
+                                        modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (raw == selectedJson) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun copyTextToClipboard(context: android.content.Context, label: String, text: String): Boolean {
+    return runCatching {
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+        true
+    }.getOrDefault(false)
+}
+
+internal fun shareText(context: android.content.Context, subject: String, text: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, subject)
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(intent, subject))
+}
+
+internal fun documentsToJsonArray(documents: List<String>): String {
+    val array = JSONArray()
+    documents.forEach { raw ->
+        runCatching { array.put(JSONObject(raw)) }.getOrElse { array.put(raw) }
+    }
+    return array.toString(2)
 }
