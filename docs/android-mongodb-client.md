@@ -70,3 +70,13 @@ Use `setup-android-signing.ps1` to generate and push these values.
 
 By default the app denies cleartext traffic. Non-TLS Mongo profiles surface an in-app warning and should only be used on trusted networks. Prefer TLS for any shared or production environment.
 
+## Known CI problems-report noise
+
+Gradle 9.5.1 with AGP 8.13.2 may write problems-report.html entries such as:
+
+- Declaring dependencies using multi-string notation has been deprecated
+  - com.android.tools.lint:lint-gradle:31.13.2
+  - com.android.tools.build:aapt2:8.13.2-...
+
+These warnings are emitted by AGP plugin code (com.android.internal.application), not by CLens uild.gradle.kts dependencies (which already use single-string notation). They are safe to ignore for now and become hard errors only on Gradle 10 unless AGP ships a fix first. Keep AGP/Gradle pins aligned with Synapse-Client unless deliberately upgrading the toolchain.
+
