@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.CLens" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/clens_background</item>
+        <item name="android:colorAccent">@color/clens_seed</item>
+    </style>
+</resources>

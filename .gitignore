@@ -25,3 +25,19 @@ replay_pid*
 
 # Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
 .kotlin/
+clens-release.jks
+Install-CodexTrellis.ps1
+keystore_base64.txt
+setup-android-signing.ps1
+.agents/skills/
+.codex/
+.trellis/
+
+# Android / IDE
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/
