@@ -24,11 +24,13 @@ val hasReleaseSigningConfig = listOf(
 
 android {
     namespace = "com.chloemlla.clens"
+    // Android 17 platform (API 37)
     compileSdk = 37
 
     defaultConfig {
         applicationId = "com.chloemlla.clens"
         minSdk = 26
+        // Target Android 17 (API 37)
         targetSdk = 37
         versionCode = providers.environmentVariable("CLENS_ANDROID_VERSION_CODE")
             .orNull

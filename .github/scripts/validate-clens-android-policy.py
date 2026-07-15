@@ -48,6 +48,8 @@ require_contains("android/app/build.gradle.kts", 'getDefaultProguardFile("progua
 require_contains("android/app/build.gradle.kts", 'applicationId = "com.chloemlla.clens"')
 require_contains("android/app/build.gradle.kts", 'create("production")')
 require_contains("android/app/build.gradle.kts", "mongodb-driver-kotlin-coroutine")
+require_contains("android/app/build.gradle.kts", "compileSdk = 37")
+require_contains("android/app/build.gradle.kts", "targetSdk = 37")
 require_contains(".github/workflows/clens-android.yml", "gradle testProductionDebugUnitTest")
 require_contains(".github/workflows/clens-android.yml", "gradle lintProductionDebug")
 require_contains(".github/workflows/clens-android.yml", "gradle assembleProductionRelease")

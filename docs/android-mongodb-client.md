@@ -33,7 +33,7 @@ android/                         # Gradle root
 | Kotlin | 2.1.20 |
 | Compose BOM | 2024.12.01 |
 | minSdk | 26 |
-| compile/targetSdk | 37 |
+| compile/targetSdk | 37 (Android 17) |
 | JDK | 21 |
 | CI Gradle | 9.5.1 |
 | Mongo driver | mongodb-driver-kotlin-coroutine 5.2.1 |

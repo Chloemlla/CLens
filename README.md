@@ -28,7 +28,7 @@ docs/android-mongodb-client.md   # product/engineering notes
 | Language | Kotlin |
 | UI | Jetpack Compose + Material 3 |
 | Min SDK | 26 |
-| Target SDK | 37 |
+| Compile / Target SDK | 37 (Android 17) |
 | JDK (CI) | 21 |
 | Gradle (CI) | 9.5.1 |
 | MongoDB driver | kotlin-coroutine 5.2.1 |
