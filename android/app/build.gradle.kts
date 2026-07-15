@@ -4,14 +4,26 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val lumenCrashSdkVersion: String =
-    providers.fileContents(layout.projectDirectory.file("../lumen-crash.version"))
+fun readVersionFile(relativePath: String): String? =
+    providers.fileContents(layout.projectDirectory.file(relativePath))
         .asText
         .orNull
         ?.lineSequence()
         ?.map { it.trim() }
         ?.firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
-        ?: "0.1.0-8e73f18d"
+
+// Prefer the version resolved by .github/scripts/fetch-lumen-crash-sdk.py (CI / local bootstrap).
+// Policy file may be "latest" or an explicit pin.
+val lumenCrashSdkVersion: String =
+    readVersionFile("../lumen-crash.resolved.version")
+        ?: readVersionFile("../lumen-crash.version")
+            ?.takeUnless { it.equals("latest", ignoreCase = true) }
+        ?: error(
+            "lumen-crash version is unresolved. Run " +
+                "`python ../.github/scripts/fetch-lumen-crash-sdk.py` " +
+                "from the android/ directory context (repo root) first, " +
+                "or set android/lumen-crash.version to an explicit version.",
+        )
 
 fun providerString(name: String, defaultValue: String): String =
     providers.environmentVariable(name)

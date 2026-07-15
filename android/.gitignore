@@ -8,3 +8,6 @@ app/build/
 # Materialized lumen-crash Maven coordinates from GitHub Release assets
 local-maven/
 
+
+# Resolved by fetch-lumen-crash-sdk.py (latest main auto-release)
+lumen-crash.resolved.version

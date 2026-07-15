@@ -1,1 +1,4 @@
-0.1.0-8e73f18d
+# latest  = track newest Project-Lumen main auto-release (lumen-crash-vX.Y.Z-<sha>)
+# 0.1.0-... or 0.1.0 = pin an exact published version
+# Override at runtime with env LUMEN_CRASH_SDK_VERSION
+latest

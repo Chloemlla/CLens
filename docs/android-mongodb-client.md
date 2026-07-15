@@ -54,8 +54,12 @@ Jobs:
 
 CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project Lumen.
 
-* Version pin: `android/lumen-crash.version` (currently `0.1.0-8e73f18d`)
-* Coordinates: `com.chloemlla.lumen:lumen-crash:<pinned-version>`
+* Version policy: `android/lumen-crash.version`
+  * `latest` (default) tracks the newest Project-Lumen **main auto-release** (`lumen-crash-vX.Y.Z-<shortSha>`)
+  * pin an exact version with `0.1.0-<sha>` or a future stable `X.Y.Z`
+  * runtime override: env `LUMEN_CRASH_SDK_VERSION`
+* Resolved version file: `android/lumen-crash.resolved.version` (generated, gitignored)
+* Coordinates: `com.chloemlla.lumen:lumen-crash:<resolved-version>`
 * Preferred resolve path: GitHub Release assets materialized into `android/local-maven/` by `.github/scripts/fetch-lumen-crash-sdk.py`
 * Fallback resolve path: GitHub Packages `https://maven.pkg.github.com/Chloemlla/Project-Lumen`
 * Install early in `ClensApplication.attachBaseContext`
@@ -63,7 +67,7 @@ CLens consumes the published `com.chloemlla.lumen:lumen-crash` SDK from Project 
 * Host product copy overrides live in `res/values*/strings.xml`
 * Host-side `SecretSanitizer` remains for Mongo/token redaction in action errors
 
-CI runs the fetch script before Gradle. Optional repository secret `LUMEN_CRASH_READ_PACKAGES_TOKEN` is only needed if Release asset download requires broader access than the default token.
+CI always runs the fetch script before Gradle so `latest` is resolved at build time.
 
 ## Secrets
 
