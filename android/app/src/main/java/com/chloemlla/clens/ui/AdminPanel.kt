@@ -2,7 +2,6 @@ package com.chloemlla.clens.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,7 +48,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.isSelectedView) {
             InfoCard(title = "视图限制", lines = listOf("MongoDB view 不支持索引创建/删除。"))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(
                 onClick = viewModel::refreshIndexes,
                 enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
@@ -109,7 +108,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "服务器",
             subtitle = "serverStatus / usersInfo / currentOp 权限不足时会降级提示。",
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(onClick = viewModel::refreshServerOverview, enabled = !state.loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
                 Spacer(Modifier.size(6.dp))

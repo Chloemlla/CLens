@@ -1,8 +1,6 @@
 package com.chloemlla.clens.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material3.Button
@@ -11,7 +9,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -46,7 +43,7 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 viewModel.updateText(ClensViewModel.Field.QueryProjection, it)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(onClick = { viewModel.runQuery(false) }, enabled = !state.loading && state.selectedCollection.isNotBlank()) { Text("执行") }
             OutlinedButton(
                 onClick = { viewModel.runQuery(true) },

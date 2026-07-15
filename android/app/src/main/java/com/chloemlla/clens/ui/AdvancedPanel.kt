@@ -1,15 +1,10 @@
 package com.chloemlla.clens.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -17,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -52,7 +46,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
             label = { Text("Bucket 名") },
             enabled = !state.loading,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(onClick = viewModel::refreshGridFs, enabled = !state.loading && state.selectedDatabase.isNotBlank()) { Text("刷新文件") }
         }
         OutlinedTextField(
@@ -78,7 +72,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     "contentType: " + file.contentType.ifBlank { "-" },
                 ),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            ActionRow {
                 OutlinedButton(onClick = { viewModel.downloadGridFs(file.id) }, enabled = !state.loading) { Text("下载文本") }
                 OutlinedButton(onClick = { viewModel.requestDeleteGridFs(file.id) }, enabled = !state.loading) { Text("删除") }
             }
@@ -93,7 +87,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
 
         // Change stream
         SectionTitle(text = "Change Stream", subtitle = "需要副本集/分片；事件最多保留 50 条。")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(
                 onClick = viewModel::startChangeStream,
                 enabled = !state.loading && !state.changeStreamRunning && state.selectedCollection.isNotBlank(),
@@ -188,7 +182,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
             label = { Text("导出 limit") },
             enabled = !state.loading,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(
                 onClick = viewModel::exportCollection,
                 enabled = !state.loading && state.selectedCollection.isNotBlank(),
@@ -209,7 +203,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
 
         SectionTitle(text = "本地审计日志", subtitle = "仅记录本机危险操作，最多 100 条。")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(onClick = viewModel::refreshAuditLog, enabled = !state.loading) { Text("刷新审计") }
             OutlinedButton(onClick = viewModel::clearAuditLog, enabled = !state.loading && state.auditLog.isNotEmpty()) { Text("清空审计") }
         }

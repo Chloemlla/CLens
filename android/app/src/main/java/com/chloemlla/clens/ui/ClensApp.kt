@@ -25,7 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,10 +72,11 @@ fun ClensApp(viewModel: ClensViewModel) {
                 .background(MaterialTheme.colorScheme.background)
                 .padding(padding),
         ) {
-            TabRow(
+            ScrollableTabRow(
                 selectedTabIndex = state.selectedTab.ordinal,
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
+                edgePadding = 8.dp,
             ) {
                 ClensTab.entries.forEach { tab ->
                     Tab(

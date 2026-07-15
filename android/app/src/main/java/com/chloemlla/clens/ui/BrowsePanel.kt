@@ -1,13 +1,9 @@
 package com.chloemlla.clens.ui
 
 import android.widget.Toast
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
@@ -41,7 +37,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             return@PanelColumn
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(onClick = { viewModel.refreshDatabases() }, enabled = !state.loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
                 Spacer(Modifier.size(6.dp))
@@ -69,7 +65,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             label = { Text("新建数据库名") },
             enabled = !state.loading,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(onClick = viewModel::createDatabase, enabled = !state.loading) { Text("创建数据库") }
             OutlinedButton(
                 onClick = viewModel::requestDropDatabase,
@@ -97,7 +93,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             label = { Text("新建集合名") },
             enabled = !state.loading && state.selectedDatabase.isNotBlank(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(
                 onClick = viewModel::createCollection,
                 enabled = !state.loading && state.selectedDatabase.isNotBlank(),
@@ -160,7 +156,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        ActionRow {
             OutlinedButton(
                 onClick = viewModel::validateSelectedCollection,
                 enabled = !state.loading && state.selectedCollection.isNotBlank(),
@@ -175,7 +171,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
 
         SectionTitle(text = "集合 Validator", subtitle = "collMod best-effort。")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             OutlinedButton(
                 onClick = viewModel::loadCollectionValidator,
                 enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
@@ -228,7 +224,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = !state.loading,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(
                 onClick = { viewModel.loadDocuments(resetSkip = true) },
                 enabled = !state.loading && state.selectedCollection.isNotBlank(),
@@ -263,7 +259,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             onSelect = viewModel::selectDocument,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        ActionRow {
             OutlinedButton(
                 onClick = {
                     val ok = copyTextToClipboard(context, "clens-document", state.selectedDocumentJson)
@@ -286,10 +282,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("文档编辑器 / 插入 JSON", state.editorJson, writeEnabled, minLines = 8) {
             viewModel.updateText(ClensViewModel.Field.EditorJson, it)
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-        ) {
+        ScrollableActionRow {
             Button(onClick = viewModel::insertDocuments, enabled = writeEnabled) { Text("插入") }
             OutlinedButton(onClick = viewModel::replaceSelectedDocument, enabled = writeEnabled) { Text("替换(_id)") }
             OutlinedButton(onClick = { viewModel.updateDocuments(false) }, enabled = writeEnabled) { Text("updateOne") }

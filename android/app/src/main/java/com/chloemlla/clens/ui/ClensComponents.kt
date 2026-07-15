@@ -9,7 +9,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -101,28 +104,57 @@ internal fun ClensAppHeader(state: ClensUiState) {
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusPill(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Outlined.Cable,
-                    label = "连接",
-                    value = profile?.name ?: "未选择",
-                    active = profile != null,
-                )
-                StatusPill(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Outlined.Storage,
-                    label = "数据库",
-                    value = state.selectedDatabase.ifBlank { "-" },
-                    active = state.selectedDatabase.isNotBlank(),
-                )
-                StatusPill(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Outlined.TravelExplore,
-                    label = "集合",
-                    value = state.selectedCollection.ifBlank { "-" },
-                    active = state.selectedCollection.isNotBlank(),
-                )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val compact = maxWidth < 520.dp
+                if (compact) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatusPill(
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = Icons.Outlined.Cable,
+                            label = "连接",
+                            value = profile?.name ?: "未选择",
+                            active = profile != null,
+                        )
+                        StatusPill(
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = Icons.Outlined.Storage,
+                            label = "数据库",
+                            value = state.selectedDatabase.ifBlank { "-" },
+                            active = state.selectedDatabase.isNotBlank(),
+                        )
+                        StatusPill(
+                            modifier = Modifier.fillMaxWidth(),
+                            icon = Icons.Outlined.TravelExplore,
+                            label = "集合",
+                            value = state.selectedCollection.ifBlank { "-" },
+                            active = state.selectedCollection.isNotBlank(),
+                        )
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatusPill(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.Cable,
+                            label = "连接",
+                            value = profile?.name ?: "未选择",
+                            active = profile != null,
+                        )
+                        StatusPill(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.Storage,
+                            label = "数据库",
+                            value = state.selectedDatabase.ifBlank { "-" },
+                            active = state.selectedDatabase.isNotBlank(),
+                        )
+                        StatusPill(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Outlined.TravelExplore,
+                            label = "集合",
+                            value = state.selectedCollection.ifBlank { "-" },
+                            active = state.selectedCollection.isNotBlank(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -138,12 +170,12 @@ internal fun PanelColumn(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(PaddingValues(16.dp)),
+            .padding(PaddingValues(horizontal = 12.dp, vertical = 16.dp)),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 760.dp)
+                .widthIn(max = 960.dp)
                 .align(Alignment.TopCenter),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -152,6 +184,34 @@ internal fun PanelColumn(
             Spacer(Modifier.height(12.dp))
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ActionRow(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = { content() },
+    )
+}
+
+@Composable
+internal fun ScrollableActionRow(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = { content() },
+    )
 }
 
 @Composable

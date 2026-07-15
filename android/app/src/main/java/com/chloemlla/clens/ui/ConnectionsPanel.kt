@@ -1,6 +1,5 @@
 package com.chloemlla.clens.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -46,7 +44,7 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
             subtitle = "保存加密连接档案，测试并激活 MongoDB 会话。",
             icon = Icons.Outlined.Cable,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionRow {
             Button(onClick = viewModel::startCreateConnection, enabled = !state.loading) {
                 Icon(Icons.Outlined.Add, contentDescription = "新建", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
@@ -131,10 +129,7 @@ private fun ConnectionCard(
                     active = connected || active,
                 )
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-            ) {
+            ScrollableActionRow {
                 OutlinedButton(onClick = onActivate, enabled = !loading) { Text("设默认") }
                 OutlinedButton(onClick = onEdit, enabled = !loading) {
                     Icon(Icons.Outlined.Edit, contentDescription = "编辑", Modifier.size(16.dp))
@@ -260,7 +255,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     viewModel.updateConnectionForm { it.copy(readOnly = checked) }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionRow {
                 Button(onClick = viewModel::saveConnection, enabled = !state.loading) { Text("保存") }
                 OutlinedButton(onClick = { viewModel.testConnection() }, enabled = !state.loading) { Text("测试当前表单") }
                 OutlinedButton(onClick = viewModel::cancelEditConnection, enabled = !state.loading) { Text("取消") }
