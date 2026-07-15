@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Cable
-import androidx.compose.material.icons.outlined.ManageSearch
+import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -101,6 +101,6 @@ fun ClensApp(viewModel: ClensViewModel) {
 private fun ClensTab.icon(): ImageVector = when (this) {
     ClensTab.Connections -> Icons.Outlined.Cable
     ClensTab.Browse -> Icons.Outlined.TravelExplore
-    ClensTab.Query -> Icons.Outlined.ManageSearch
+    ClensTab.Query -> Icons.AutoMirrored.Outlined.ManageSearch
     ClensTab.Admin -> Icons.Outlined.AdminPanelSettings
 }

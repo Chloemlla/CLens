@@ -111,6 +111,9 @@ android {
                 "META-INF/NOTICE",
                 "META-INF/NOTICE.txt",
                 "META-INF/*.kotlin_module",
+                // MongoDB Java driver ships GraalVM native-image metadata that collides across jars.
+                "META-INF/native-image/**",
+                "META-INF/versions/**",
             )
         }
     }

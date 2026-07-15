@@ -3,7 +3,7 @@ package com.chloemlla.clens.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ManageSearch
+import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -18,7 +18,7 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         SectionTitle(
             text = "查询控制台",
             subtitle = "Find / Aggregate / Explain，结果以 JSON 展示。",
-            icon = Icons.Outlined.ManageSearch,
+            icon = Icons.AutoMirrored.Outlined.ManageSearch,
         )
         if (!state.isConnected) {
             InfoCard(title = "尚未连接", lines = listOf("先连接并在「浏览」中选择数据库与集合。"))
