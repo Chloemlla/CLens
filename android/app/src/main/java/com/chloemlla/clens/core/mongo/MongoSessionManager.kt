@@ -147,9 +147,13 @@ class MongoSessionManager {
 
     private companion object {
         val REQUIRED_MONGO_AUTH_CLASSES = listOf(
+            "javax.security.sasl.SaslClient",
+            "javax.security.sasl.SaslException",
             "com.mongodb.internal.connection.DefaultAuthenticator",
             "com.mongodb.internal.connection.SaslAuthenticator",
             "com.mongodb.internal.connection.SaslAuthenticator\$SaslClientImpl",
+            "com.mongodb.internal.connection.ScramShaAuthenticator",
+            "com.mongodb.internal.connection.ScramShaAuthenticator\$ScramShaSaslClient",
         )
     }
 }

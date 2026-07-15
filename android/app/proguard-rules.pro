@@ -60,6 +60,11 @@
 -dontwarn org.ietf.jgss.**
 -dontwarn javax.security.sasl.**
 
+# Android lacks the JDK SASL module. CLens ships minimal stubs under
+# android/app/src/main/java/javax/security/sasl so Mongo SCRAM classes can load.
+-keep class javax.security.sasl.** { *; }
+-keep interface javax.security.sasl.** { *; }
+
 # Compose and lifecycle warnings are dependency-internal.
 -dontwarn androidx.compose.**
 -dontwarn androidx.lifecycle.**

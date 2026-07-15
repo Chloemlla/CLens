@@ -11,9 +11,13 @@ from pathlib import Path
 
 
 REQUIRED_CLASS_SUBSTRINGS = (
+    "Ljavax/security/sasl/SaslClient;",
+    "Ljavax/security/sasl/SaslException;",
     "Lcom/mongodb/internal/connection/SaslAuthenticator;",
     "Lcom/mongodb/internal/connection/SaslAuthenticator$SaslClientImpl;",
     "Lcom/mongodb/internal/connection/DefaultAuthenticator;",
+    "Lcom/mongodb/internal/connection/ScramShaAuthenticator;",
+    "Lcom/mongodb/internal/connection/ScramShaAuthenticator$ScramShaSaslClient;",
 )
 
 
