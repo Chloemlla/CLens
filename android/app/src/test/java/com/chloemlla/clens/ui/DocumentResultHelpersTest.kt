@@ -12,7 +12,7 @@ class DocumentResultHelpersTest {
             """{"_id":2,"age":18,"name":"b"}""",
         )
         val fields = topLevelFields(docs)
-        assertEquals(listOf("_id", "name", "age"), fields)
+        assertEquals(listOf("_id", "age", "name"), fields)
     }
 
     @Test

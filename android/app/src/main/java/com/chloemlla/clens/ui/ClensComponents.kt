@@ -346,7 +346,15 @@ internal fun topLevelFields(documents: List<String>, maxDocs: Int = 20): List<St
             obj.keys().forEach { key -> keys += key }
         }
     }
-    return keys.toList()
+    if (keys.isEmpty()) return emptyList()
+    // org.json key iteration is not stable across Android/JVM. Prefer a deterministic
+    // table header order: _id first, then remaining fields alphabetically.
+    val ordered = mutableListOf<String>()
+    if ("_id" in keys) {
+        ordered += "_id"
+    }
+    ordered += keys.asSequence().filter { it != "_id" }.sorted().toList()
+    return ordered
 }
 
 @Composable
