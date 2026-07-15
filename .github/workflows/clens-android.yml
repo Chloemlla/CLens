@@ -67,19 +67,19 @@ jobs:
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
-        run: gradle testProductionDebugUnitTest --no-daemon --warning-mode all
+        run: ./gradlew testProductionDebugUnitTest --no-daemon --warning-mode all
 
       - name: Run Android lint
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
-        run: gradle lintProductionDebug --no-daemon --warning-mode all
+        run: ./gradlew lintProductionDebug --no-daemon --warning-mode all
 
       - name: Build release APK for verification
         env:
           CLENS_ANDROID_VERSION_NAME: ${{ env.CLENS_ANDROID_VERSION_NAME }}
           CLENS_ANDROID_VERSION_CODE: ${{ env.CLENS_ANDROID_VERSION_CODE }}
-        run: gradle assembleProductionRelease --no-daemon --warning-mode all
+        run: ./gradlew assembleProductionRelease --no-daemon --warning-mode all
 
       - name: Upload verification reports
         if: always()
@@ -173,7 +173,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle assembleProductionRelease --no-daemon --warning-mode all
+        run: ./gradlew assembleProductionRelease --no-daemon --warning-mode all
 
       - name: Prepare release assets
         run: |

@@ -5,7 +5,6 @@ import android.content.Context
 import com.chloemlla.clens.core.crash.CrashBreadcrumbs
 import com.chloemlla.clens.core.crash.CrashReport
 import com.chloemlla.clens.core.crash.CrashReportStore
-import com.tencent.mmkv.MMKV
 
 class ClensApplication : Application() {
     val crashReports: CrashReportStore by lazy { CrashReportStore(this) }
@@ -25,7 +24,6 @@ class ClensApplication : Application() {
         super.onCreate()
         CrashBreadcrumbs.record("Application.onCreate")
         installCrashReporter()
-        initializeMmkvOrRecordCrash()
     }
 
     private fun installCrashReporter() {
@@ -47,12 +45,6 @@ class ClensApplication : Application() {
         crashExceptionHandler = handler
         Thread.setDefaultUncaughtExceptionHandler(handler)
         CrashBreadcrumbs.record("Crash reporter installed")
-    }
-
-    private fun initializeMmkvOrRecordCrash() {
-        runCatching { MMKV.initialize(this) }
-            .onSuccess { CrashBreadcrumbs.record("MMKV initialized") }
-            .onFailure(::recordCrash)
     }
 
     fun recordStartupCrash(throwable: Throwable): CrashReport {

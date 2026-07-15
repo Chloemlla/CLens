@@ -14,6 +14,10 @@ import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -76,12 +80,22 @@ fun ClensApp(viewModel: ClensViewModel) {
                     Tab(
                         selected = state.selectedTab == tab,
                         onClick = { viewModel.selectTab(tab) },
-                        icon = { Icon(imageVector = tab.icon(), contentDescription = null) },
+                        icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
                         text = { Text(tab.label) },
                     )
                 }
             }
 
+            if (!state.cleartextWarning.isNullOrBlank()) {
+                Text(
+                    text = state.cleartextWarning,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -96,6 +110,55 @@ fun ClensApp(viewModel: ClensViewModel) {
             }
         }
     }
+
+    state.pendingDestructive?.let { pending ->
+        DestructiveConfirmDialog(
+            pending = pending,
+            confirmInput = state.destructiveConfirmInput,
+            loading = state.loading,
+            onConfirmInputChange = viewModel::updateDestructiveConfirmInput,
+            onConfirm = viewModel::confirmDestructive,
+            onCancel = viewModel::cancelDestructive,
+        )
+    }
+}
+
+@Composable
+private fun DestructiveConfirmDialog(
+    pending: PendingDestructiveAction,
+    confirmInput: String,
+    loading: Boolean,
+    onConfirmInputChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val needsTypedName = pending.action == DestructiveAction.DropDatabase
+    val confirmEnabled = !loading && (!needsTypedName || confirmInput == pending.target)
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("确认危险操作") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(pending.message)
+                if (needsTypedName) {
+                    OutlinedTextField(
+                        value = confirmInput,
+                        onValueChange = onConfirmInputChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("输入数据库名确认") },
+                        enabled = !loading,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, enabled = confirmEnabled) { Text("确认执行") }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel, enabled = !loading) { Text("取消") }
+        },
+    )
 }
 
 private fun ClensTab.icon(): ImageVector = when (this) {

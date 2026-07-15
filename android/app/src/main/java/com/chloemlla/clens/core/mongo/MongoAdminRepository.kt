@@ -206,12 +206,16 @@ class MongoAdminRepository(
         limit: Int = 100,
     ): QueryResult = withContext(Dispatchers.IO) {
         val started = System.nanoTime()
-        val pipeline = parsePipeline(pipelineJson)
-        val docs = collection(database, collection)
+        val safeLimit = limit.coerceIn(1, 500)
+        val pipeline = ensureAggregateLimit(parsePipeline(pipelineJson), safeLimit)
+        val docs = mutableListOf<String>()
+        collection(database, collection)
             .aggregate<Document>(pipeline)
-            .toList()
-            .take(limit.coerceIn(1, 500))
-            .map { pretty(it) }
+            .collect { document ->
+                if (docs.size < safeLimit) {
+                    docs += pretty(document)
+                }
+            }
         QueryResult(
             documents = docs,
             durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
@@ -341,6 +345,18 @@ class MongoAdminRepository(
             Document.parse(normalized)
         } catch (error: Exception) {
             throw MongoAdminException.Validation("$fieldName 解析失败: ${error.message}")
+        }
+    }
+
+    companion object {
+        fun ensureAggregateLimit(pipeline: List<Document>, limit: Int): List<Document> {
+            val safeLimit = limit.coerceIn(1, 500)
+            val hasLimitStage = pipeline.any { stage -> stage.containsKey("\$limit") }
+            return if (hasLimitStage) {
+                pipeline
+            } else {
+                pipeline + Document("\$limit", safeLimit)
+            }
         }
     }
 

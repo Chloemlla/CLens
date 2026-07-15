@@ -38,7 +38,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { viewModel.refreshDatabases() }, enabled = !state.loading) {
-                Icon(Icons.Outlined.Refresh, null, Modifier.size(16.dp))
+                Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
                 Spacer(Modifier.size(6.dp))
                 Text("刷新库")
             }
@@ -59,7 +59,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = viewModel::createDatabase, enabled = !state.loading) { Text("创建数据库") }
             OutlinedButton(
-                onClick = viewModel::dropDatabase,
+                onClick = viewModel::requestDropDatabase,
                 enabled = !state.loading && state.selectedDatabase.isNotBlank(),
             ) { Text("删除当前库") }
         }
@@ -85,7 +85,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 enabled = !state.loading && state.selectedDatabase.isNotBlank(),
             ) { Text("创建集合") }
             OutlinedButton(
-                onClick = viewModel::dropCollection,
+                onClick = viewModel::requestDropCollection,
                 enabled = !state.loading && state.selectedCollection.isNotBlank(),
             ) { Text("删除集合") }
         }

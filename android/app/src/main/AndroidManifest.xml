@@ -15,7 +15,7 @@
         android:roundIcon="@drawable/ic_launcher_clens"
         android:supportsRtl="true"
         android:theme="@style/Theme.CLens"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

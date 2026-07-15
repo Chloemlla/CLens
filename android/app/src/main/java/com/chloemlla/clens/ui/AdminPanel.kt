@@ -94,7 +94,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     }.ifBlank { "options: default" }
                     Text(options, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
-                        onClick = { viewModel.dropIndex(index.name) },
+                        onClick = { viewModel.requestDropIndex(index.name) },
                         enabled = !state.loading && index.name != "_id_",
                     ) { Text("删除索引") }
                 }
@@ -106,7 +106,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             subtitle = "serverStatus / usersInfo / currentOp 权限不足时会降级提示。",
         )
         OutlinedButton(onClick = viewModel::refreshServerOverview, enabled = !state.loading) {
-            Icon(Icons.Outlined.Refresh, null, Modifier.size(16.dp))
+            Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
             Spacer(Modifier.size(6.dp))
             Text("刷新服务器信息")
         }
@@ -124,11 +124,15 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             )
             JsonField("serverStatus JSON", overview.rawStatusJson, enabled = false, minLines = 8) {}
         }
-        if (state.users.isNotEmpty()) {
-            InfoCard(title = "用户 (" + state.users.size + ")", lines = state.users)
+        when {
+            state.usersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.usersError ?: ""))
+            state.users.isNotEmpty() -> InfoCard(title = "用户 (" + state.users.size + ")", lines = state.users)
+            else -> InfoCard(title = "用户", lines = listOf("当前认证库没有可显示的用户，或结果为空。"))
         }
-        if (state.currentOpsJson.isNotBlank()) {
-            JsonField("currentOp", state.currentOpsJson, enabled = false, minLines = 8) {}
+        when {
+            state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError ?: ""))
+            state.currentOpsJson.isNotBlank() -> JsonField("currentOp", state.currentOpsJson, enabled = false, minLines = 8) {}
+            else -> InfoCard(title = "currentOp", lines = listOf("暂无当前操作数据。"))
         }
     }
 }

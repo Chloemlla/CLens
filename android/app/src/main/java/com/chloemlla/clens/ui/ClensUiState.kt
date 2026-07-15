@@ -6,6 +6,19 @@ import com.chloemlla.clens.core.mongo.IndexSummary
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.ServerOverview
 
+enum class DestructiveAction {
+    DropDatabase,
+    DropCollection,
+    DeleteMany,
+    DropIndex,
+}
+
+data class PendingDestructiveAction(
+    val action: DestructiveAction,
+    val target: String = "",
+    val message: String,
+)
+
 enum class ClensTab(val label: String) {
     Connections("连接"),
     Browse("浏览"),
@@ -68,7 +81,12 @@ data class ClensUiState(
     val indexExpireAfterSeconds: String = "",
     val serverOverview: ServerOverview? = null,
     val users: List<String> = emptyList(),
+    val usersError: String? = null,
     val currentOpsJson: String = "",
+    val currentOpsError: String? = null,
+    val pendingDestructive: PendingDestructiveAction? = null,
+    val destructiveConfirmInput: String = "",
+    val cleartextWarning: String? = null,
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,

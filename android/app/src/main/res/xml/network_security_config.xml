@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cleartext is intentionally allowed for common LAN MongoDB deployments; prefer TLS in production. -->
-<network-security-config xmlns:tools="http://schemas.android.com/tools">
-    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+<!-- Default deny cleartext. Explicit non-TLS Mongo profiles show UI warnings; prefer TLS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

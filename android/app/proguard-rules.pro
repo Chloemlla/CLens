@@ -27,10 +27,6 @@
     public static ** valueOf(java.lang.String);
 }
 
-# MMKV loads native code and stores preference values by stable keys.
--keep class com.tencent.mmkv.** { *; }
--dontwarn com.tencent.mmkv.**
-
 # AndroidX Security Crypto is used for encrypted connection secrets.
 -dontwarn androidx.security.crypto.**
 

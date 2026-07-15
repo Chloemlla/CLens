@@ -1,12 +1,13 @@
 package com.chloemlla.clens.core.mongo
 
+import com.mongodb.ConnectionString
 import java.net.URLEncoder
 
 object MongoUriBuilder {
     fun build(profile: MongoConnectionProfile): String {
         val directUri = profile.uri.trim()
         if (directUri.isNotBlank()) {
-            return directUri
+            return validateDirectUri(directUri)
         }
 
         val host = profile.host.trim().ifBlank {
@@ -86,6 +87,20 @@ object MongoUriBuilder {
             throw error
         } catch (error: Exception) {
             throw MongoAdminException.Validation("$fieldName 无效: ${error.message}")
+        }
+    }
+
+    fun validateDirectUri(uri: String): String {
+        val trimmed = uri.trim()
+        val lower = trimmed.lowercase()
+        if (!lower.startsWith("mongodb://") && !lower.startsWith("mongodb+srv://")) {
+            throw MongoAdminException.Validation("URI 必须以 mongodb:// 或 mongodb+srv:// 开头。")
+        }
+        return try {
+            ConnectionString(trimmed)
+            trimmed
+        } catch (error: Exception) {
+            throw MongoAdminException.Validation("MongoDB URI 无效: " + (error.message ?: "parse error"))
         }
     }
 

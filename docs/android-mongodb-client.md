@@ -65,3 +65,8 @@ Use `setup-android-signing.ps1` to generate and push these values.
 * Mongo driver jars include an optional Netty stream factory. CLens uses the default NIO `MongoClientSettings` path only.
 * ProGuard keeps `com.mongodb.**` while excluding `com.mongodb.internal.connection.netty.**` so R8 does not retain the untyped Netty constructor warning during `minifyProductionReleaseWithR8`.
 * Optional Reactor / Micrometer / BlockHound service metadata is excluded from packaging and silenced with `-dontwarn`.
+
+## Cleartext MongoDB
+
+By default the app denies cleartext traffic. Non-TLS Mongo profiles surface an in-app warning and should only be used on trusted networks. Prefer TLS for any shared or production environment.
+

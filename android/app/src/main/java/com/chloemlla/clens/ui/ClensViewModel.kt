@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ClensViewModel(
     private val connectionStore: MongoConnectionStore,
@@ -24,6 +26,7 @@ class ClensViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(ClensUiState())
     val state: StateFlow<ClensUiState> = _state.asStateFlow()
+    private val actionMutex = Mutex()
 
     init {
         refreshProfiles(status = "连接配置已加载")
@@ -43,7 +46,14 @@ class ClensViewModel(
     }
 
     fun updateConnectionForm(transform: (ConnectionFormState) -> ConnectionFormState) {
-        _state.update { it.copy(connectionForm = transform(it.connectionForm), editingConnection = true) }
+        _state.update {
+            val form = transform(it.connectionForm)
+            it.copy(
+                connectionForm = form,
+                editingConnection = true,
+                cleartextWarning = CleartextRisk.forForm(form),
+            )
+        }
     }
 
     fun startCreateConnection() {
@@ -279,7 +289,22 @@ class ClensViewModel(
         }
     }
 
-    fun dropDatabase() {
+    fun requestDropDatabase() {
+        val name = _state.value.selectedDatabase
+        if (name.isBlank()) return
+        _state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DropDatabase,
+                    target = name,
+                    message = "将永久删除数据库 `$name` 及其全部集合。请输入数据库名以确认。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun dropDatabaseConfirmed() {
         runAction("删除数据库") {
             val name = _state.value.selectedDatabase
             repository.dropDatabase(name)
@@ -290,6 +315,8 @@ class ClensViewModel(
                     collections = emptyList(),
                     documents = emptyList(),
                     indexes = emptyList(),
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
                 )
             }
             refreshDatabases(silent = true)
@@ -337,7 +364,22 @@ class ClensViewModel(
         }
     }
 
-    fun dropCollection() {
+    fun requestDropCollection() {
+        val collection = _state.value.selectedCollection
+        if (collection.isBlank()) return
+        _state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DropCollection,
+                    target = collection,
+                    message = "将永久删除集合 `${_state.value.selectedDatabase}.$collection`。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun dropCollectionConfirmed() {
         runAction("删除集合") {
             val database = _state.value.selectedDatabase
             val collection = _state.value.selectedCollection
@@ -347,6 +389,8 @@ class ClensViewModel(
                     selectedCollection = "",
                     documents = emptyList(),
                     indexes = emptyList(),
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
                 )
             }
             refreshCollections(silent = true)
@@ -440,20 +484,48 @@ class ClensViewModel(
     }
 
     fun deleteDocuments(multi: Boolean) {
-        runAction(if (multi) "批量删除" else "删除一条") {
+        if (multi) {
+            requestDeleteMany()
+            return
+        }
+        runAction("删除一条") {
             val state = _state.value
-            val filter = if (!multi) {
-                extractIdFilter(state.selectedDocumentJson)
-                    ?: throw MongoAdminException.Validation("请先选择带 _id 的文档。")
-            } else {
-                state.browseFilterJson
-            }
+            val filter = extractIdFilter(state.selectedDocumentJson)
+                ?: throw MongoAdminException.Validation("请先选择带 _id 的文档。")
             val deleted = repository.deleteDocuments(
                 state.selectedDatabase,
                 state.selectedCollection,
                 filter,
-                multi = multi,
+                multi = false,
             )
+            loadDocuments(resetSkip = true)
+            _state.update { it.copy(status = "删除完成，deleted=$deleted") }
+        }
+    }
+
+    fun requestDeleteMany() {
+        _state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DeleteMany,
+                    target = it.selectedCollection,
+                    message = "将按当前 Filter 执行 deleteMany：`${it.selectedDatabase}.${it.selectedCollection}`。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun deleteManyConfirmed() {
+        runAction("批量删除") {
+            val state = _state.value
+            val deleted = repository.deleteDocuments(
+                state.selectedDatabase,
+                state.selectedCollection,
+                state.browseFilterJson,
+                multi = true,
+            )
+            _state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
             loadDocuments(resetSkip = true)
             _state.update { it.copy(status = "删除完成，deleted=$deleted") }
         }
@@ -543,10 +615,26 @@ class ClensViewModel(
         }
     }
 
-    fun dropIndex(name: String) {
+    fun requestDropIndex(name: String) {
+        if (name.isBlank() || name == "_id_") return
+        _state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DropIndex,
+                    target = name,
+                    message = "将删除索引 `$name`。",
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun dropIndexConfirmed() {
         runAction("删除索引") {
             val state = _state.value
+            val name = state.pendingDestructive?.target.orEmpty()
             repository.dropIndex(state.selectedDatabase, state.selectedCollection, name)
+            _state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
             refreshIndexes()
             _state.update { it.copy(status = "索引已删除：$name") }
         }
@@ -555,15 +643,17 @@ class ClensViewModel(
     fun refreshServerOverview() {
         runAction("刷新服务器信息") {
             val overview = repository.serverOverview()
-            val users = runCatching {
+            val usersResult = runCatching {
                 repository.listUsers(_state.value.activeProfile?.authDatabase ?: "admin")
-            }.getOrDefault(emptyList())
-            val ops = runCatching { repository.currentOps() }.getOrDefault("")
+            }
+            val opsResult = runCatching { repository.currentOps() }
             _state.update {
                 it.copy(
                     serverOverview = overview,
-                    users = users,
-                    currentOpsJson = ops,
+                    users = usersResult.getOrDefault(emptyList()),
+                    usersError = usersResult.exceptionOrNull()?.message,
+                    currentOpsJson = opsResult.getOrDefault(""),
+                    currentOpsError = opsResult.exceptionOrNull()?.message,
                     status = "服务器信息已更新",
                 )
             }
@@ -603,6 +693,32 @@ class ClensViewModel(
         )
     }
 
+
+    fun updateDestructiveConfirmInput(value: String) {
+        _state.update { it.copy(destructiveConfirmInput = value) }
+    }
+
+    fun cancelDestructive() {
+        _state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
+    }
+
+    fun confirmDestructive() {
+        val pending = _state.value.pendingDestructive ?: return
+        when (pending.action) {
+            DestructiveAction.DropDatabase -> {
+                if (_state.value.destructiveConfirmInput != pending.target) {
+                    _state.update { it.copy(error = "数据库名不匹配，已取消删除。") }
+                    return
+                }
+                dropDatabaseConfirmed()
+            }
+            DestructiveAction.DropCollection -> dropCollectionConfirmed()
+            DestructiveAction.DeleteMany -> deleteManyConfirmed()
+            DestructiveAction.DropIndex -> dropIndexConfirmed()
+        }
+    }
+
+
     private fun extractIdFilter(documentJson: String): String? {
         return runCatching {
             val obj = org.json.JSONObject(documentJson)
@@ -617,30 +733,40 @@ class ClensViewModel(
         block: suspend () -> Unit,
     ) {
         viewModelScope.launch {
-            _state.update {
-                it.copy(
-                    loading = true,
-                    error = null,
-                    status = if (silent) it.status else "$label...",
-                )
+            if (!actionMutex.tryLock()) {
+                _state.update {
+                    it.copy(error = "已有操作进行中，请等待完成后再试。")
+                }
+                return@launch
             }
-            CrashBreadcrumbs.record("Action start: $label")
             try {
-                block()
-                CrashBreadcrumbs.record("Action ok: $label")
-            } catch (error: Throwable) {
-                val message = CrashReportSanitizer.sanitize(
-                    error.message?.takeIf { it.isNotBlank() } ?: "$label 失败",
-                )
-                CrashBreadcrumbs.record("Action fail: $label")
                 _state.update {
                     it.copy(
-                        error = message,
-                        status = "",
+                        loading = true,
+                        error = null,
+                        status = if (silent) it.status else (label + "..."),
                     )
                 }
+                CrashBreadcrumbs.record("Action start: $label")
+                try {
+                    block()
+                    CrashBreadcrumbs.record("Action ok: $label")
+                } catch (error: Throwable) {
+                    val message = CrashReportSanitizer.sanitize(
+                        error.message?.takeIf { it.isNotBlank() } ?: "$label 失败",
+                    )
+                    CrashBreadcrumbs.record("Action fail: $label")
+                    _state.update {
+                        it.copy(
+                            error = message,
+                            status = "",
+                        )
+                    }
+                } finally {
+                    _state.update { it.copy(loading = false) }
+                }
             } finally {
-                _state.update { it.copy(loading = false) }
+                actionMutex.unlock()
             }
         }
     }

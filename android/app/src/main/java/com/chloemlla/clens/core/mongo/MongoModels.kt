@@ -88,6 +88,6 @@ data class ConnectionTestResult(
 )
 
 sealed class MongoAdminException(message: String, cause: Throwable? = null) : Exception(message, cause) {
-    class Validation(message: String) : MongoAdminException(message)
+    class Validation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)
     class Operation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)
 }

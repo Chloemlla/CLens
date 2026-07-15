@@ -48,13 +48,13 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = viewModel::startCreateConnection, enabled = !state.loading) {
-                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.Add, contentDescription = "新建", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text("新建连接")
             }
             if (state.isConnected) {
                 OutlinedButton(onClick = viewModel::disconnect, enabled = !state.loading) {
-                    Icon(Icons.Outlined.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.LinkOff, contentDescription = "断开", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(8.dp))
                     Text("断开")
                 }
@@ -65,7 +65,7 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 title = "还没有连接",
                 lines = listOf(
                     "支持 mongodb:// / mongodb+srv:// URI，或主机端口表单。",
-                    "凭据使用 EncryptedSharedPreferences 本地加密保存。",
+                    "凭据仅在安全存储可用时写入 EncryptedSharedPreferences；安全存储失败会直接拒绝保存。",
                     "局域网实例可关闭 TLS；生产环境建议开启 TLS。",
                 ),
             )
@@ -136,14 +136,14 @@ private fun ConnectionCard(
             ) {
                 OutlinedButton(onClick = onActivate, enabled = !loading) { Text("设默认") }
                 OutlinedButton(onClick = onEdit, enabled = !loading) {
-                    Icon(Icons.Outlined.Edit, null, Modifier.size(16.dp))
+                    Icon(Icons.Outlined.Edit, contentDescription = "编辑", Modifier.size(16.dp))
                     Spacer(Modifier.size(6.dp))
                     Text("编辑")
                 }
                 OutlinedButton(onClick = onTest, enabled = !loading) { Text("测试") }
                 Button(onClick = onConnect, enabled = !loading) { Text("连接") }
                 OutlinedButton(onClick = onDelete, enabled = !loading) {
-                    Icon(Icons.Outlined.DeleteOutline, null, Modifier.size(16.dp))
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = "删除", Modifier.size(16.dp))
                     Spacer(Modifier.size(6.dp))
                     Text("删除")
                 }

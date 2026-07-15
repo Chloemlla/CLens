@@ -26,6 +26,8 @@ def require_contains(relative_path: str, expected: str) -> None:
 
 
 for required in (
+    "android/gradlew",
+    "android/gradle/wrapper/gradle-wrapper.properties",
     "android/settings.gradle.kts",
     "android/build.gradle.kts",
     "android/app/build.gradle.kts",
@@ -50,9 +52,9 @@ require_contains("android/app/build.gradle.kts", 'create("production")')
 require_contains("android/app/build.gradle.kts", "mongodb-driver-kotlin-coroutine")
 require_contains("android/app/build.gradle.kts", "compileSdk = 37")
 require_contains("android/app/build.gradle.kts", "targetSdk = 37")
-require_contains(".github/workflows/clens-android.yml", "gradle testProductionDebugUnitTest")
-require_contains(".github/workflows/clens-android.yml", "gradle lintProductionDebug")
-require_contains(".github/workflows/clens-android.yml", "gradle assembleProductionRelease")
+require_contains(".github/workflows/clens-android.yml", "./gradlew testProductionDebugUnitTest")
+require_contains(".github/workflows/clens-android.yml", "./gradlew lintProductionDebug")
+require_contains(".github/workflows/clens-android.yml", "./gradlew assembleProductionRelease")
 
 if ERRORS:
     for error in ERRORS:

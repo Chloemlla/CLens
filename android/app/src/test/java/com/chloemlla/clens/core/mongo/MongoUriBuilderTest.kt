@@ -53,4 +53,24 @@ class MongoUriBuilderTest {
     fun rejectsNonObjectJson() {
         MongoUriBuilder.validateJsonObject("[1,2]", "filter")
     }
+
+    @Test(expected = MongoAdminException.Validation::class)
+    fun rejectsInvalidDirectUriScheme() {
+        MongoUriBuilder.build(
+            MongoConnectionProfile(
+                name = "bad",
+                uri = "http://example.com",
+            ),
+        )
+    }
+
+    @Test(expected = MongoAdminException.Validation::class)
+    fun rejectsMalformedMongoUri() {
+        MongoUriBuilder.build(
+            MongoConnectionProfile(
+                name = "bad",
+                uri = "mongodb://",
+            ),
+        )
+    }
 }

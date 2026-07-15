@@ -12,6 +12,7 @@
 
 # Package Files #
 *.jar
+!android/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -42,3 +43,4 @@ local.properties
 .cxx/
 captures/
 clens-android-verification-reports/
+fuck-my-shit-mountain/
