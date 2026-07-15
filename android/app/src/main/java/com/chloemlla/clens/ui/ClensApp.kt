@@ -87,9 +87,10 @@ fun ClensApp(viewModel: ClensViewModel) {
                 }
             }
 
-            if (!state.cleartextWarning.isNullOrBlank()) {
+            val cleartextWarning = state.cleartextWarning
+            if (!cleartextWarning.isNullOrBlank()) {
                 Text(
-                    text = state.cleartextWarning,
+                    text = cleartextWarning,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),

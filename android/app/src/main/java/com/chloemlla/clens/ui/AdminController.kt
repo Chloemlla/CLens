@@ -122,19 +122,31 @@ class AdminController(
 
     fun refreshCurrentOps() {
         ctx.actions.run("刷新当前操作") {
-            val ops = runCatching { repository.listCurrentOps() }
-            state.update {
-                it.copy(
-                    currentOps = ops.getOrDefault(emptyList()),
-                    currentOpsListError = ops.exceptionOrNull()?.message,
-                    currentOpsJson = if (ops.isSuccess) {
-                        ops.getOrNull()?.joinToString(separator = ",\n", prefix = "[\n", postfix = "\n]") { it.rawJson } ?: "[]"
-                    } else {
-                        it.currentOpsJson
-                    },
-                    status = if (ops.isSuccess) "当前操作 " + (ops.getOrNull()?.size ?: 0) + " 条" else it.status,
-                )
-            }
+            loadCurrentOps(updateStatus = true)
+        }
+    }
+
+    private suspend fun loadCurrentOps(updateStatus: Boolean = false) {
+        val ops = runCatching { repository.listCurrentOps() }
+        state.update { current ->
+            current.copy(
+                currentOps = ops.getOrDefault(emptyList()),
+                currentOpsListError = ops.exceptionOrNull()?.message,
+                currentOpsJson = if (ops.isSuccess) {
+                    ops.getOrNull()?.joinToString(
+                        separator = ",\n",
+                        prefix = "[\n",
+                        postfix = "\n]",
+                    ) { summary -> summary.rawJson } ?: "[]"
+                } else {
+                    current.currentOpsJson
+                },
+                status = if (updateStatus && ops.isSuccess) {
+                    "当前操作 " + (ops.getOrNull()?.size ?: 0) + " 条"
+                } else {
+                    current.status
+                },
+            )
         }
     }
 
