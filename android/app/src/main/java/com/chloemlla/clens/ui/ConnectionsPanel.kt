@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
+import com.chloemlla.clens.core.mongo.MongoUriBuilder
 import com.chloemlla.clens.ui.connection.ConnectionImportSection
 
 @Composable
@@ -200,6 +201,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
             ConnectionImportSection(
                 enabled = !state.loading,
                 onUriImported = { uri, name ->
+                    val parsed = MongoUriBuilder.parseUriToFormFields(uri)
                     viewModel.updateConnectionForm { current ->
                         current.copy(
                             useUri = true,
@@ -208,7 +210,24 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                                 !name.isNullOrBlank() && current.name.isBlank() -> name
                                 else -> current.name
                             },
+                            host = parsed?.host?.takeIf { it.isNotBlank() } ?: current.host,
+                            port = parsed?.port?.toString() ?: current.port,
+                            username = parsed?.username?.takeIf { it.isNotBlank() } ?: current.username,
+                            password = parsed?.password?.takeIf { it.isNotBlank() } ?: current.password,
+                            authDatabase = parsed?.authDatabase?.takeIf { it.isNotBlank() }
+                                ?: current.authDatabase,
+                            defaultDatabase = parsed?.defaultDatabase?.takeIf { it.isNotBlank() }
+                                ?: current.defaultDatabase,
+                            replicaSet = parsed?.replicaSet?.takeIf { it.isNotBlank() }
+                                ?: current.replicaSet,
+                            tls = parsed?.tls ?: current.tls,
+                            directConnection = parsed?.directConnection ?: current.directConnection,
                         )
+                    }
+                    importMessage = buildString {
+                        append("已导入连接 URI")
+                        if (!name.isNullOrBlank()) append(" · ").append(name)
+                        if (parsed != null) append("，并同步了主机/认证字段")
                     }
                 },
                 onImportMessage = { message ->

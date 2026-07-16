@@ -9,12 +9,15 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.core.storage.ThemeMode
+import com.chloemlla.clens.ui.security.BiometricAuthHelper
 
 @Composable
 internal fun SettingsPanel(state: ClensUiState, viewModel: ClensViewModel) {
+    val context = LocalContext.current
     PanelColumn(state = state, onDismissFeedback = viewModel::clearFeedback) {
         ClensAppHeader(state = state)
         SectionTitle(
@@ -52,24 +55,32 @@ internal fun SettingsPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "安全",
             subtitle = "生物识别应用锁，默认关闭。",
         )
+        val biometricAvailable = BiometricAuthHelper.canAuthenticate(context)
         InfoCard(
             title = "应用锁",
             lines = listOf(
                 "开启后，启动与后台超时返回时需要生物识别或设备凭据。",
                 "可随时在此开关，不依赖首次弹窗选择。",
+                if (biometricAvailable) {
+                    BiometricAuthHelper.statusMessage(context)
+                } else {
+                    BiometricAuthHelper.statusMessage(context) + "，开关已隐藏。"
+                },
             ),
         )
-        FlagRow(
-            label = "启用生物识别锁定",
-            checked = state.biometricEnabled,
-            enabled = !state.loading,
-            onCheckedChange = viewModel::setBiometricEnabled,
-        )
-        Text(
-            text = if (state.biometricEnabled) "当前：已启用应用锁" else "当前：应用锁关闭",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (biometricAvailable) {
+            FlagRow(
+                label = "启用生物识别锁定",
+                checked = state.biometricEnabled,
+                enabled = !state.loading,
+                onCheckedChange = viewModel::setBiometricEnabled,
+            )
+            Text(
+                text = if (state.biometricEnabled) "当前：已启用应用锁" else "当前：应用锁关闭",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         SectionTitle(
             text = "外观",

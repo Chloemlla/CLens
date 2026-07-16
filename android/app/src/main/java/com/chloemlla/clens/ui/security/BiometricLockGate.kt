@@ -116,7 +116,20 @@ fun BiometricLockGate(
         )
     }
 
-    if (showFirstLaunchPrompt && !promptSeen) {
+    // Auto-dismiss first-launch prompt when biometric unavailable.
+    LaunchedEffect(showFirstLaunchPrompt, promptSeen, context) {
+        if (showFirstLaunchPrompt && !promptSeen && !BiometricAuthHelper.canAuthenticate(context)) {
+            securityPrefs.setBiometricPromptSeen(true)
+            securityPrefs.setBiometricEnabled(false)
+            showFirstLaunchPrompt = false
+            promptSeen = true
+            biometricEnabled = false
+            unlocked = true
+        }
+    }
+
+    if (showFirstLaunchPrompt && !promptSeen && BiometricAuthHelper.canAuthenticate(context)) {
+
         AlertDialog(
             onDismissRequest = {
                 securityPrefs.setBiometricPromptSeen(true)

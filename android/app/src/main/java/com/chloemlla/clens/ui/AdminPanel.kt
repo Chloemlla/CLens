@@ -207,7 +207,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                                     containerColor = MaterialTheme.colorScheme.error,
                                     contentColor = MaterialTheme.colorScheme.onError,
                                 ),
-                            ) { Text("Kill") }
+                            ) { Text("Kill 操作") }
                         }
                     }
                 }
