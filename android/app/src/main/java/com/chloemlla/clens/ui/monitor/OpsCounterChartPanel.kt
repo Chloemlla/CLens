@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.core.mongo.OpsCounterPoint
 import com.chloemlla.clens.core.mongo.OpsCounterSampleState
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 
@@ -132,13 +134,44 @@ fun OpsCounterChartPanel(
                     },
                 )
             } else {
+                val windowLabel = formatSampleWindow(points)
+                val maxValue = chartMaxValue(points, enabled)
+                Text(
+                    text = windowLabel + " · 采样 " + points.size + " 点 · Ymax " + formatQps(maxValue),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 MultiSeriesLineChart(
                     points = points,
                     enabledSeries = enabled,
+                    maxValue = maxValue,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp),
+                        .height(200.dp),
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "0",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Text(
+                        text = formatQps(maxValue / 2.0),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Text(
+                        text = formatQps(maxValue),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
 
             val current = sampleState?.current
@@ -230,29 +263,31 @@ private fun MetricRow(name: String, current: Double?, peak: Double?, color: Colo
 private fun MultiSeriesLineChart(
     points: List<OpsCounterPoint>,
     enabledSeries: Map<String, Boolean>,
+    maxValue: Double,
     modifier: Modifier = Modifier,
 ) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val axisColor = MaterialTheme.colorScheme.outline
+    val peakColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
 
     Canvas(modifier = modifier) {
         val width = size.width
         val height = size.height
-        val left = 8f
-        val right = width - 8f
-        val top = 8f
-        val bottom = height - 8f
+        val left = 12f
+        val right = width - 12f
+        val top = 10f
+        val bottom = height - 10f
         val chartWidth = (right - left).coerceAtLeast(1f)
         val chartHeight = (bottom - top).coerceAtLeast(1f)
 
-        // horizontal grid
-        for (i in 0..3) {
-            val y = top + chartHeight * i / 3f
+        // horizontal grid + mid emphasis
+        for (i in 0..4) {
+            val y = top + chartHeight * i / 4f
             drawLine(
-                color = gridColor,
+                color = if (i == 2) peakColor else gridColor,
                 start = Offset(left, y),
                 end = Offset(right, y),
-                strokeWidth = 1f,
+                strokeWidth = if (i == 2) 1.5f else 1f,
             )
         }
         drawLine(axisColor, Offset(left, top), Offset(left, bottom), strokeWidth = 1.5f)
@@ -260,17 +295,7 @@ private fun MultiSeriesLineChart(
 
         if (points.isEmpty()) return@Canvas
 
-        val maxValue = max(
-            1.0,
-            points.maxOf { point ->
-                var m = 0.0
-                if (enabledSeries[OpsSeries.Insert.key] == true) m = max(m, point.insertQps)
-                if (enabledSeries[OpsSeries.Query.key] == true) m = max(m, point.queryQps)
-                if (enabledSeries[OpsSeries.Update.key] == true) m = max(m, point.updateQps)
-                if (enabledSeries[OpsSeries.Delete.key] == true) m = max(m, point.deleteQps)
-                m
-            },
-        )
+        val safeMax = max(1.0, maxValue)
 
         fun xAt(index: Int): Float {
             if (points.size == 1) return left + chartWidth / 2f
@@ -278,7 +303,7 @@ private fun MultiSeriesLineChart(
         }
 
         fun yAt(value: Double): Float {
-            val ratio = (value / maxValue).toFloat().coerceIn(0f, 1f)
+            val ratio = (value / safeMax).toFloat().coerceIn(0f, 1f)
             return bottom - chartHeight * ratio
         }
 
@@ -318,6 +343,29 @@ private fun MultiSeriesLineChart(
             drawSeries(OpsSeries.Delete.color) { it.deleteQps }
         }
     }
+}
+
+private fun chartMaxValue(points: List<OpsCounterPoint>, enabledSeries: Map<String, Boolean>): Double {
+    if (points.isEmpty()) return 1.0
+    val raw = points.maxOf { point ->
+        var m = 0.0
+        if (enabledSeries[OpsSeries.Insert.key] == true) m = max(m, point.insertQps)
+        if (enabledSeries[OpsSeries.Query.key] == true) m = max(m, point.queryQps)
+        if (enabledSeries[OpsSeries.Update.key] == true) m = max(m, point.updateQps)
+        if (enabledSeries[OpsSeries.Delete.key] == true) m = max(m, point.deleteQps)
+        m
+    }
+    // Pad headroom so lines are not glued to the top edge.
+    return max(1.0, raw * 1.15)
+}
+
+private fun formatSampleWindow(points: List<OpsCounterPoint>): String {
+    if (points.isEmpty()) return "无采样"
+    val first = points.first().timestampMillis
+    val last = points.last().timestampMillis
+    val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    val spanSec = ((last - first).coerceAtLeast(0L) / 1000L)
+    return fmt.format(Date(first)) + " → " + fmt.format(Date(last)) + "（" + spanSec + "s）"
 }
 
 private fun formatQps(value: Double?): String {

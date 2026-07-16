@@ -1,6 +1,13 @@
 package com.chloemlla.clens.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,9 +35,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.monitor.CurrentOpFilter
+import com.chloemlla.clens.ui.monitor.CurrentOpFilters
 import com.chloemlla.clens.ui.monitor.OpsCounterChartPanel
 
-private const val SLOW_OP_SECS_THRESHOLD = 5L
 
 @Composable
 internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -151,9 +159,50 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             state.currentOpsListError != null -> InfoCard(title = "当前操作不可用", lines = listOf(state.currentOpsListError ?: ""))
             state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError ?: ""))
             state.currentOps.isNotEmpty() -> {
-                state.currentOps.forEach { op ->
+                var opFilter by remember { mutableStateOf(CurrentOpFilter.All) }
+                var opQuery by remember { mutableStateOf("") }
+                val filteredOps = remember(state.currentOps, opFilter, opQuery) {
+                    state.currentOps.filter { op ->
+                        CurrentOpFilters.matchesFilter(op, opFilter) && CurrentOpFilters.matchesQuery(op, opQuery)
+                    }
+                }
+                Text(
+                    text = "当前操作筛选：" + filteredOps.size + " / " + state.currentOps.size,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CurrentOpFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = opFilter == filter,
+                            onClick = { opFilter = filter },
+                            enabled = !state.loading,
+                            label = { Text(filter.label) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = opQuery,
+                    onValueChange = { opQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !state.loading,
+                    label = { Text("搜索 opid / ns / client / op") },
+                )
+                if (filteredOps.isEmpty()) {
+                    InfoCard(
+                        title = "无匹配操作",
+                        lines = listOf("当前筛选条件下没有 currentOp，可切换“全部”或清空搜索。"),
+                    )
+                }
+                filteredOps.forEach { op ->
                     val secs = op.secsRunning
-                    val slow = secs != null && secs >= SLOW_OP_SECS_THRESHOLD
+                    val slow = secs != null && secs >= CurrentOpFilters.SLOW_OP_SECS_THRESHOLD
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -217,3 +266,4 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
     }
 }
+
