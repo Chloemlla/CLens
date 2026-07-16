@@ -3,6 +3,8 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.QueryHistoryEntry
 import com.chloemlla.clens.core.mongo.QueryFavoriteEntry
 import com.chloemlla.clens.core.mongo.QueryFieldInferencer
+import com.chloemlla.clens.core.mongo.SqlToMongoTranslator
+import com.chloemlla.clens.core.mongo.SqlTranslateException
 import com.chloemlla.clens.core.mongo.VisualFilterBuilder
 import com.chloemlla.clens.core.mongo.VisualFilterClause
 import java.util.UUID
@@ -18,20 +20,57 @@ class QueryController(
         state.update { it.copy(queryModeAggregate = enabled) }
     }
 
-    fun setQueryVisualMode(enabled: Boolean) {
+    fun setQueryInputMode(mode: QueryInputMode) {
         state.update { current ->
-            if (enabled == current.queryVisualMode) return@update current
-            if (enabled) {
-                val clauses = VisualFilterBuilder.fromFilterJson(current.queryFilterJson)
-                    .ifEmpty { listOf(VisualFilterClause()) }
-                current.copy(queryVisualMode = true, queryVisualClauses = clauses)
-            } else {
-                current.copy(
-                    queryVisualMode = false,
-                    queryFilterJson = VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true),
-                )
+            if (mode == current.queryInputMode) return@update current
+            when (mode) {
+                QueryInputMode.Visual -> {
+                    val clauses = VisualFilterBuilder.fromFilterJson(current.queryFilterJson)
+                        .ifEmpty { listOf(VisualFilterClause()) }
+                    current.copy(
+                        queryInputMode = QueryInputMode.Visual,
+                        queryVisualClauses = clauses,
+                        querySqlPreview = "",
+                        querySqlLimit = null,
+                        querySqlSkip = null,
+                    )
+                }
+                QueryInputMode.Json -> {
+                    val filterJson = if (current.queryInputMode == QueryInputMode.Visual) {
+                        VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
+                    } else {
+                        current.queryFilterJson
+                    }
+                    current.copy(
+                        queryInputMode = QueryInputMode.Json,
+                        queryFilterJson = filterJson,
+                        querySqlPreview = "",
+                        querySqlLimit = null,
+                        querySqlSkip = null,
+                    )
+                }
+                QueryInputMode.Sql -> {
+                    val filterJson = if (current.queryInputMode == QueryInputMode.Visual) {
+                        VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
+                    } else {
+                        current.queryFilterJson
+                    }
+                    current.copy(
+                        queryInputMode = QueryInputMode.Sql,
+                        queryFilterJson = filterJson,
+                        querySqlPreview = "",
+                        querySqlLimit = null,
+                        querySqlSkip = null,
+                        error = null,
+                    )
+                }
             }
         }
+    }
+
+    /** Backward-compatible toggle used by older call sites. */
+    fun setQueryVisualMode(enabled: Boolean) {
+        setQueryInputMode(if (enabled) QueryInputMode.Visual else QueryInputMode.Json)
     }
 
     fun updateVisualClause(index: Int, clause: VisualFilterClause) {
@@ -69,6 +108,72 @@ class QueryController(
         }
     }
 
+    fun updateSqlInput(value: String) {
+        state.update {
+            it.copy(
+                querySqlInput = value,
+                querySqlPreview = if (value == it.querySqlInput) it.querySqlPreview else "",
+            )
+        }
+    }
+
+    fun translateSql(showStatus: Boolean = true): Boolean {
+        val current = state.value
+        return try {
+            val translated = SqlToMongoTranslator.translate(current.querySqlInput)
+            val clauses = VisualFilterBuilder.fromFilterJson(translated.filterJson)
+                .ifEmpty { listOf(VisualFilterClause()) }
+            state.update {
+                it.copy(
+                    selectedCollection = translated.collection?.takeIf { name -> name.isNotBlank() }
+                        ?: it.selectedCollection,
+                    queryFilterJson = translated.filterJson,
+                    queryProjectionJson = translated.projectionJson,
+                    querySortJson = translated.sortJson,
+                    querySqlPreview = translated.shellPreview,
+                    querySqlLimit = translated.limit,
+                    querySqlSkip = translated.skip,
+                    queryVisualClauses = clauses,
+                    status = if (showStatus) "SQL 已翻译为 Mongo find" else it.status,
+                    error = null,
+                )
+            }
+            true
+        } catch (error: SqlTranslateException) {
+            state.update {
+                it.copy(
+                    error = error.message ?: "SQL 翻译失败",
+                    querySqlPreview = "",
+                    querySqlLimit = null,
+                    querySqlSkip = null,
+                )
+            }
+            false
+        } catch (error: Exception) {
+            state.update {
+                it.copy(
+                    error = error.message ?: "SQL 翻译失败",
+                    querySqlPreview = "",
+                    querySqlLimit = null,
+                    querySqlSkip = null,
+                )
+            }
+            false
+        }
+    }
+
+    fun runSqlQuery() {
+        if (!translateSql(showStatus = false)) return
+        val selected = state.value.selectedCollection
+        if (selected.isBlank()) {
+            state.update {
+                it.copy(error = "请在 SQL 中写 FROM <集合>，或先在浏览页选择集合。")
+            }
+            return
+        }
+        runQuery(withExplain = false, fromSql = true)
+    }
+
     fun updateFavoriteNameInput(value: String) {
         state.update { it.copy(queryFavoriteNameInput = value) }
     }
@@ -80,11 +185,7 @@ class QueryController(
             state.update { it.copy(error = "请先填写收藏名称") }
             return
         }
-        val filterJson = if (!current.queryModeAggregate && current.queryVisualMode) {
-            VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
-        } else {
-            current.queryFilterJson
-        }
+        val filterJson = activeFilterJson(current)
         val entry = QueryFavoriteEntry(
             id = UUID.randomUUID().toString(),
             name = name,
@@ -129,10 +230,18 @@ class QueryController(
                 queryProjectionJson = entry.projectionJson,
                 queryPipelineJson = entry.pipelineJson,
                 queryVisualClauses = clauses,
-                queryVisualMode = !entry.modeAggregate,
+                queryInputMode = if (entry.modeAggregate) it.queryInputMode else QueryInputMode.Json,
+                querySqlPreview = "",
+                querySqlLimit = null,
+                querySqlSkip = null,
                 status = "已恢复收藏：" + entry.name,
                 error = null,
             )
+        }
+        // One-tap reuse: restore then execute when a collection is selected.
+        val current = state.value
+        if (current.isConnected && current.selectedCollection.isNotBlank()) {
+            runQuery(withExplain = false, fromSql = false)
         }
     }
 
@@ -144,8 +253,9 @@ class QueryController(
 
     fun suggestedQueryFields(): List<String> {
         val current = state.value
+        val samples = (current.queryResults + current.documents).distinct().take(12)
         return QueryFieldInferencer.inferFieldNames(
-            sampleDocumentsJson = current.queryResults,
+            sampleDocumentsJson = samples,
             indexKeysJson = current.indexes.map { it.keysJson },
         )
     }
@@ -154,7 +264,7 @@ class QueryController(
         state.update { current ->
             when (field) {
                 ClensViewModel.Field.QueryFilter -> {
-                    val clauses = if (current.queryVisualMode) {
+                    val clauses = if (current.queryInputMode == QueryInputMode.Visual) {
                         VisualFilterBuilder.fromFilterJson(value).ifEmpty { listOf(VisualFilterClause()) }
                     } else {
                         current.queryVisualClauses
@@ -164,6 +274,7 @@ class QueryController(
                 ClensViewModel.Field.QuerySort -> current.copy(querySortJson = value)
                 ClensViewModel.Field.QueryProjection -> current.copy(queryProjectionJson = value)
                 ClensViewModel.Field.QueryPipeline -> current.copy(queryPipelineJson = value)
+                ClensViewModel.Field.QuerySql -> current.copy(querySqlInput = value, querySqlPreview = "")
                 else -> current
             }
         }
@@ -190,13 +301,27 @@ class QueryController(
         state.update { it.copy(resultViewMode = mode) }
     }
 
-    fun runQuery(withExplain: Boolean = false) {
+    fun runQuery(withExplain: Boolean = false, fromSql: Boolean = false) {
+        if (!fromSql &&
+            !withExplain &&
+            !state.value.queryModeAggregate &&
+            state.value.queryInputMode == QueryInputMode.Sql
+        ) {
+            runSqlQuery()
+            return
+        }
         ctx.actions.run(if (withExplain) "Explain" else "执行查询") {
             val current = state.value
-            val filterJson = if (!current.queryModeAggregate && current.queryVisualMode) {
-                VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
+            val filterJson = activeFilterJson(current)
+            val limit = if (fromSql) {
+                current.querySqlLimit?.coerceIn(1, 500) ?: current.documentLimit
             } else {
-                current.queryFilterJson
+                current.documentLimit
+            }
+            val skip = if (fromSql) {
+                current.querySqlSkip?.coerceAtLeast(0) ?: 0
+            } else {
+                0
             }
             if (current.queryModeAggregate) {
                 if (withExplain) {
@@ -234,8 +359,8 @@ class QueryController(
                     filterJson = filterJson,
                     sortJson = current.querySortJson,
                     projectionJson = current.queryProjectionJson,
-                    limit = current.documentLimit,
-                    skip = 0,
+                    limit = limit,
+                    skip = skip,
                 )
                 val explain = if (withExplain) {
                     repository.explainFind(
@@ -254,8 +379,13 @@ class QueryController(
                         queryResults = page.documents,
                         queryDurationMillis = null,
                         explainJson = explain,
-                        status = "查询返回 " + page.documents.size + " 条" +
-                            if (withExplain) "（含 explain）" else "",
+                        status = buildString {
+                            append("查询返回 ")
+                            append(page.documents.size)
+                            append(" 条")
+                            if (withExplain) append("（含 explain）")
+                            if (fromSql) append(" · SQL")
+                        },
                     )
                 }
                 saveHistory(aggregate = false)
@@ -284,19 +414,27 @@ class QueryController(
                 queryProjectionJson = entry.projectionJson,
                 queryPipelineJson = entry.pipelineJson,
                 queryVisualClauses = clauses,
-                queryVisualMode = !entry.modeAggregate && it.queryVisualMode,
+                queryInputMode = when {
+                    entry.modeAggregate -> it.queryInputMode
+                    it.queryInputMode == QueryInputMode.Sql -> QueryInputMode.Json
+                    else -> it.queryInputMode
+                },
+                querySqlPreview = "",
+                querySqlLimit = null,
+                querySqlSkip = null,
                 status = "已恢复查询历史：" + entry.title,
             )
+        }
+        // PRD: history supports one-tap re-run.
+        val current = state.value
+        if (current.isConnected && current.selectedCollection.isNotBlank()) {
+            runQuery(withExplain = false, fromSql = false)
         }
     }
 
     private fun saveHistory(aggregate: Boolean) {
         val current = state.value
-        val filterJson = if (!aggregate && current.queryVisualMode) {
-            VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
-        } else {
-            current.queryFilterJson
-        }
+        val filterJson = activeFilterJson(current)
         val entry = QueryHistoryEntry(
             id = UUID.randomUUID().toString(),
             modeAggregate = aggregate,
@@ -309,5 +447,13 @@ class QueryController(
         )
         ctx.localStore.addQueryHistory(entry)
         ctx.refreshLocalLists()
+    }
+
+    private fun activeFilterJson(current: ClensUiState): String {
+        return if (!current.queryModeAggregate && current.queryInputMode == QueryInputMode.Visual) {
+            VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
+        } else {
+            current.queryFilterJson
+        }
     }
 }

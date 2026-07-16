@@ -1,15 +1,21 @@
 package com.chloemlla.clens.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.ui.query.VisualQueryBuilder
 
 @Composable
@@ -18,7 +24,7 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         ClensAppHeader(state = state)
         SectionTitle(
             text = "查询控制台",
-            subtitle = "Find / Aggregate / Explain，结果支持 JSON 与表格。",
+            subtitle = "Find / Aggregate / SQL-to-NoSQL，结果支持 JSON 与表格。",
             icon = Icons.AutoMirrored.Outlined.ManageSearch,
         )
         if (!state.isConnected) {
@@ -35,44 +41,128 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 viewModel.updateText(ClensViewModel.Field.QueryPipeline, it)
             }
         } else {
-            FlagRow("可视化构建", state.queryVisualMode, !state.loading, viewModel::setQueryVisualMode)
-            if (state.queryVisualMode) {
-                VisualQueryBuilder(
-                    clauses = state.queryVisualClauses,
-                    suggestedFields = viewModel.suggestedQueryFields(),
-                    enabled = !state.loading,
-                    onClauseChange = viewModel::updateVisualClause,
-                    onAddClause = viewModel::addVisualClause,
-                    onRemoveClause = viewModel::removeVisualClause,
-                )
-                Text(
-                    text = "预览 Filter JSON",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                JsonField("Filter 预览", state.queryFilterJson, enabled = false, minLines = 3) {}
-            } else {
-                JsonField("Filter", state.queryFilterJson, !state.loading) {
-                    viewModel.updateText(ClensViewModel.Field.QueryFilter, it)
+            Text(
+                text = "Find 输入模式",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QueryInputMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = state.queryInputMode == mode,
+                        onClick = { viewModel.setQueryInputMode(mode) },
+                        enabled = !state.loading,
+                        label = {
+                            Text(
+                                when (mode) {
+                                    QueryInputMode.Visual -> "可视化"
+                                    QueryInputMode.Json -> "JSON"
+                                    QueryInputMode.Sql -> "SQL"
+                                },
+                            )
+                        },
+                    )
                 }
             }
-            JsonField("Sort", state.querySortJson, !state.loading) {
-                viewModel.updateText(ClensViewModel.Field.QuerySort, it)
-            }
-            JsonField("Projection", state.queryProjectionJson, !state.loading) {
-                viewModel.updateText(ClensViewModel.Field.QueryProjection, it)
+            when (state.queryInputMode) {
+                QueryInputMode.Visual -> {
+                    VisualQueryBuilder(
+                        clauses = state.queryVisualClauses,
+                        suggestedFields = viewModel.suggestedQueryFields(),
+                        enabled = !state.loading,
+                        onClauseChange = viewModel::updateVisualClause,
+                        onAddClause = viewModel::addVisualClause,
+                        onRemoveClause = viewModel::removeVisualClause,
+                    )
+                    Text(
+                        text = "预览 Filter JSON",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    JsonField("Filter 预览", state.queryFilterJson, enabled = false, minLines = 3) {}
+                    JsonField("Sort", state.querySortJson, !state.loading) {
+                        viewModel.updateText(ClensViewModel.Field.QuerySort, it)
+                    }
+                    JsonField("Projection", state.queryProjectionJson, !state.loading) {
+                        viewModel.updateText(ClensViewModel.Field.QueryProjection, it)
+                    }
+                }
+                QueryInputMode.Json -> {
+                    JsonField("Filter", state.queryFilterJson, !state.loading) {
+                        viewModel.updateText(ClensViewModel.Field.QueryFilter, it)
+                    }
+                    JsonField("Sort", state.querySortJson, !state.loading) {
+                        viewModel.updateText(ClensViewModel.Field.QuerySort, it)
+                    }
+                    JsonField("Projection", state.queryProjectionJson, !state.loading) {
+                        viewModel.updateText(ClensViewModel.Field.QueryProjection, it)
+                    }
+                }
+                QueryInputMode.Sql -> {
+                    InfoCard(
+                        title = "SQL-to-NoSQL（Find 子集）",
+                        lines = listOf(
+                            "支持 SELECT / WHERE / ORDER BY / LIMIT / OFFSET",
+                            "比较符、AND、IN、LIKE、IS NULL；不支持 JOIN / GROUP BY / OR",
+                            "点击翻译预览或执行时本地转换，不在输入时实时解析",
+                        ),
+                    )
+                    OutlinedTextField(
+                        value = state.querySqlInput,
+                        onValueChange = viewModel::updateSqlInput,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.loading,
+                        minLines = 5,
+                        maxLines = 10,
+                        label = { Text("SQL") },
+                        placeholder = { Text("SELECT * FROM users WHERE age > 18") },
+                    )
+                    ActionRow {
+                        OutlinedButton(
+                            onClick = viewModel::translateSql,
+                            enabled = !state.loading && state.querySqlInput.isNotBlank(),
+                        ) { Text("翻译预览") }
+                        Button(
+                            onClick = viewModel::runSqlQuery,
+                            enabled = !state.loading && state.querySqlInput.isNotBlank(),
+                        ) { Text("执行 SQL") }
+                    }
+                    if (state.querySqlPreview.isNotBlank()) {
+                        JsonField("Mongo 预览", state.querySqlPreview, enabled = false, minLines = 2) {}
+                        JsonField("Filter", state.queryFilterJson, enabled = false, minLines = 3) {}
+                        JsonField("Sort", state.querySortJson, enabled = false, minLines = 2) {}
+                        JsonField("Projection", state.queryProjectionJson, enabled = false, minLines = 2) {}
+                        val limitText = state.querySqlLimit?.toString() ?: "沿用 documentLimit(${state.documentLimit})"
+                        val skipText = state.querySqlSkip?.toString() ?: "0"
+                        Text(
+                            text = "LIMIT=$limitText · OFFSET=$skipText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
-        ActionRow {
-            Button(onClick = { viewModel.runQuery(false) }, enabled = !state.loading && state.selectedCollection.isNotBlank()) { Text("执行") }
-            OutlinedButton(
-                onClick = { viewModel.runQuery(true) },
-                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.queryModeAggregate,
-            ) { Text("Find + Explain") }
-            OutlinedButton(
-                onClick = viewModel::explainAggregate,
-                enabled = !state.loading && state.selectedCollection.isNotBlank() && state.queryModeAggregate,
-            ) { Text("Aggregate Explain") }
+        if (state.queryInputMode != QueryInputMode.Sql || state.queryModeAggregate) {
+            ActionRow {
+                Button(
+                    onClick = { viewModel.runQuery(false) },
+                    enabled = !state.loading && state.selectedCollection.isNotBlank(),
+                ) { Text("执行") }
+                OutlinedButton(
+                    onClick = { viewModel.runQuery(true) },
+                    enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.queryModeAggregate,
+                ) { Text("Find + Explain") }
+                OutlinedButton(
+                    onClick = viewModel::explainAggregate,
+                    enabled = !state.loading && state.selectedCollection.isNotBlank() && state.queryModeAggregate,
+                ) { Text("Aggregate Explain") }
+            }
         }
         state.queryDurationMillis?.let { duration ->
             Text(
@@ -102,16 +192,20 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
             InfoCard(title = "暂无收藏", lines = listOf("填写名称后可保存当前查询条件。"))
         } else {
             state.queryFavorites.forEach { item ->
-                OutlinedButton(
-                    onClick = { viewModel.restoreQueryFavorite(item.id) },
-                    enabled = !state.loading,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(item.title) }
-                OutlinedButton(
-                    onClick = { viewModel.deleteQueryFavorite(item.id) },
-                    enabled = !state.loading,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("删除 · " + item.name) }
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.restoreQueryFavorite(item.id) },
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(item.title, maxLines = 1) }
+                    OutlinedButton(
+                        onClick = { viewModel.deleteQueryFavorite(item.id) },
+                        enabled = !state.loading,
+                    ) { Text("删除") }
+                }
             }
         }
 
