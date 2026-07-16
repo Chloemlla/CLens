@@ -7,6 +7,8 @@ import org.json.JSONTokener
 object DocNodeCodec {
     private val OBJECT_ID_REGEX = Regex("^[0-9a-fA-F]{24}$")
 
+    data class BinaryValue(val base64: String, val subType: String)
+
     fun emptyObject(collapsed: Boolean = false): DocNode {
         return DocNode(
             path = emptyList(),
@@ -96,6 +98,8 @@ object DocNodeCodec {
                     DocValueType.Int32, DocValueType.Int64, DocValueType.Double -> scalar?.trim()
                     DocValueType.ObjectId -> scalar?.trim()
                     DocValueType.Date -> scalar?.trim()
+                    DocValueType.GeoPoint -> normalizeGeoPointScalar(scalar)
+                    DocValueType.Binary -> normalizeBinaryScalar(scalar)
                     else -> scalar
                 }
                 val error = validateScalar(newType, normalized)
@@ -124,7 +128,6 @@ object DocNodeCodec {
         java.security.SecureRandom().nextBytes(bytes)
         return bytes.joinToString("") { b -> "%02x".format(b) }
     }
-
 
     fun nowIsoDate(): String {
         val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
@@ -172,6 +175,20 @@ object DocNodeCodec {
             node.type == DocValueType.Null -> "null"
             node.type == DocValueType.ObjectId -> node.scalar.orEmpty()
             node.type == DocValueType.Date -> node.scalar.orEmpty()
+            node.type == DocValueType.GeoPoint -> {
+                val point = parseGeoPoint(node.scalar)
+                if (point != null) "lat=${point.first}, lng=${point.second}" else node.scalar.orEmpty()
+            }
+            node.type == DocValueType.Binary -> {
+                val binary = parseBinary(node.scalar)
+                if (binary != null) {
+                    val preview = binary.base64.take(18)
+                    val suffix = if (binary.base64.length > 18) "…" else ""
+                    "bin/${binary.subType} · $preview$suffix"
+                } else {
+                    node.scalar.orEmpty()
+                }
+            }
             else -> node.scalar.orEmpty().ifBlank { "\"\"" }
         }
     }
@@ -234,6 +251,64 @@ object DocNodeCodec {
         return repath(withParent)
     }
 
+    fun encodeGeoPoint(lat: Double, lng: Double): String {
+        return JSONObject()
+            .put("type", "Point")
+            .put("coordinates", JSONArray().put(lng).put(lat))
+            .toString()
+    }
+
+    fun parseGeoPoint(raw: String?): Pair<Double, Double>? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching {
+            val obj = JSONObject(raw)
+            if (!isGeoJsonPoint(obj)) return@runCatching null
+            val coords = obj.getJSONArray("coordinates")
+            val lng = coords.getDouble(0)
+            val lat = coords.getDouble(1)
+            if (lat !in -90.0..90.0 || lng !in -180.0..180.0) return@runCatching null
+            lat to lng
+        }.getOrNull()
+    }
+
+    fun normalizeGeoPointScalar(raw: String?): String? {
+        val point = parseGeoPoint(raw) ?: return null
+        return encodeGeoPoint(point.first, point.second)
+    }
+
+    fun encodeBinary(base64: String, subType: String = "00"): String {
+        val normalizedSubType = normalizeSubType(subType)
+        return JSONObject()
+            .put("\$binary", JSONObject().put("base64", base64).put("subType", normalizedSubType))
+            .toString()
+    }
+
+    fun parseBinary(raw: String?): BinaryValue? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching {
+            val obj = JSONObject(raw)
+            when (val binary = obj.opt("\$binary")) {
+                is JSONObject -> {
+                    val base64 = binary.optString("base64")
+                    val subType = normalizeSubType(binary.optString("subType", "00"))
+                    if (base64.isNotBlank() && !isValidBase64(base64)) return@runCatching null
+                    BinaryValue(base64 = base64, subType = subType)
+                }
+                is String -> {
+                    val subType = normalizeSubType(obj.optString("\$type", obj.optString("subType", "00")))
+                    if (binary.isNotBlank() && !isValidBase64(binary)) return@runCatching null
+                    BinaryValue(base64 = binary, subType = subType)
+                }
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    fun normalizeBinaryScalar(raw: String?): String? {
+        val binary = parseBinary(raw) ?: return null
+        return encodeBinary(binary.base64, binary.subType)
+    }
+
     private fun defaultScalarFor(type: DocValueType, current: DocNode): String? {
         return when (type) {
             DocValueType.Null -> null
@@ -248,6 +323,8 @@ object DocNodeCodec {
             DocValueType.Date -> {
                 parseDateMillis(current.scalar)?.let { formatIsoDate(it) } ?: nowIsoDate()
             }
+            DocValueType.GeoPoint -> normalizeGeoPointScalar(current.scalar) ?: encodeGeoPoint(0.0, 0.0)
+            DocValueType.Binary -> normalizeBinaryScalar(current.scalar) ?: encodeBinary("", "00")
             DocValueType.String -> current.scalar.orEmpty()
             DocValueType.Object, DocValueType.Array -> null
             else -> current.scalar
@@ -316,34 +393,55 @@ object DocNodeCodec {
         depth: Int,
         autoExpandDepth: Int,
     ): DocNode {
-        if (obj.length() == 1) {
-            when {
-                obj.has("\$oid") -> {
-                    val oid = obj.optString("\$oid")
-                    return DocNode(
-                        path = path,
-                        key = key,
-                        type = DocValueType.ObjectId,
-                        scalar = oid,
-                        collapsed = false,
-                        error = validateScalar(DocValueType.ObjectId, oid),
-                    )
-                }
-                obj.has("\$date") -> {
-                    val dateValue = obj.opt("\$date")
-                    val display = when (dateValue) {
-                        is JSONObject -> dateValue.opt("\$numberLong")?.toString() ?: dateValue.toString()
-                        else -> dateValue?.toString().orEmpty()
-                    }
-                    return DocNode(
-                        path = path,
-                        key = key,
-                        type = DocValueType.Date,
-                        scalar = display,
-                        collapsed = false,
-                    )
-                }
+        if (obj.has("\$oid") && obj.length() == 1) {
+            val oid = obj.optString("\$oid")
+            return DocNode(
+                path = path,
+                key = key,
+                type = DocValueType.ObjectId,
+                scalar = oid,
+                collapsed = false,
+                error = validateScalar(DocValueType.ObjectId, oid),
+            )
+        }
+        if (obj.has("\$date") && obj.length() == 1) {
+            val dateValue = obj.opt("\$date")
+            val display = when (dateValue) {
+                is JSONObject -> dateValue.opt("\$numberLong")?.toString() ?: dateValue.toString()
+                else -> dateValue?.toString().orEmpty()
             }
+            return DocNode(
+                path = path,
+                key = key,
+                type = DocValueType.Date,
+                scalar = display,
+                collapsed = false,
+            )
+        }
+        if (obj.has("\$binary")) {
+            val encoded = encodeBinaryFromJson(obj)
+            return DocNode(
+                path = path,
+                key = key,
+                type = DocValueType.Binary,
+                scalar = encoded,
+                collapsed = false,
+                error = validateScalar(DocValueType.Binary, encoded),
+            )
+        }
+        if (isGeoJsonPoint(obj)) {
+            val coords = obj.getJSONArray("coordinates")
+            val lng = coords.optDouble(0)
+            val lat = coords.optDouble(1)
+            val encoded = encodeGeoPoint(lat, lng)
+            return DocNode(
+                path = path,
+                key = key,
+                type = DocValueType.GeoPoint,
+                scalar = encoded,
+                collapsed = false,
+                error = validateScalar(DocValueType.GeoPoint, encoded),
+            )
         }
 
         val keys = obj.keys().asSequence().toList()
@@ -458,7 +556,24 @@ object DocNodeCodec {
                 JSONObject().put("\$oid", oid)
             }
             DocValueType.Date -> JSONObject().put("\$date", node.scalar.orEmpty())
-            DocValueType.Binary, DocValueType.GeoPoint, DocValueType.Raw -> {
+            DocValueType.GeoPoint -> {
+                val point = parseGeoPoint(node.scalar)
+                    ?: throw IllegalArgumentException("${node.displayLabel}: GeoPoint 需要合法 lat/lng")
+                JSONObject()
+                    .put("type", "Point")
+                    .put("coordinates", JSONArray().put(point.second).put(point.first))
+            }
+            DocValueType.Binary -> {
+                val binary = parseBinary(node.scalar)
+                    ?: throw IllegalArgumentException("${node.displayLabel}: Binary 需要 base64 + subType")
+                JSONObject().put(
+                    "\$binary",
+                    JSONObject()
+                        .put("base64", binary.base64)
+                        .put("subType", binary.subType),
+                )
+            }
+            DocValueType.Raw -> {
                 val raw = node.scalar.orEmpty()
                 runCatching { JSONTokener(raw).nextValue() }.getOrDefault(raw)
             }
@@ -479,9 +594,35 @@ object DocNodeCodec {
             DocValueType.Boolean -> if (scalar == null || scalar != "true" && scalar != "false") "Boolean 仅支持 true/false" else null
             DocValueType.ObjectId -> if (scalar.isNullOrBlank() || !isValidObjectId(scalar)) "ObjectId 必须是 24 位十六进制" else null
             DocValueType.Date -> if (scalar.isNullOrBlank() || parseDateMillis(scalar) == null) "Date 需为 ISO-8601 或毫秒时间戳" else null
+            DocValueType.GeoPoint -> if (parseGeoPoint(scalar) == null) "GeoPoint 需要合法 lat/lng" else null
+            DocValueType.Binary -> if (parseBinary(scalar) == null) "Binary 需要 base64 与 subType" else null
             DocValueType.Null -> null
             else -> null
         }
+    }
+
+    private fun encodeBinaryFromJson(obj: JSONObject): String {
+        val parsed = parseBinary(obj.toString())
+        return parsed?.let { encodeBinary(it.base64, it.subType) } ?: obj.toString()
+    }
+
+    private fun isGeoJsonPoint(obj: JSONObject): Boolean {
+        if (!obj.optString("type").equals("Point", ignoreCase = true)) return false
+        val coords = obj.optJSONArray("coordinates") ?: return false
+        return coords.length() >= 2
+    }
+
+    private fun normalizeSubType(raw: String): String {
+        val value = raw.trim().ifBlank { "00" }
+        val hex = value.removePrefix("0x")
+        return if (hex.length == 1) "0" + hex.lowercase() else hex.lowercase().take(2)
+    }
+
+    private fun isValidBase64(value: String): Boolean {
+        if (value.isEmpty()) return true
+        val normalized = value.replace("\\s".toRegex(), "")
+        if (normalized.length % 4 != 0) return false
+        return normalized.matches(Regex("^[A-Za-z0-9+/]*={0,2}$"))
     }
 
     private fun normalizeBoolean(raw: String?): String {

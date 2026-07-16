@@ -19,4 +19,9 @@ class DocumentDraftStoreLogicTest {
             DocumentDraftStore.buildKey("conn", "db", "coll", "  "),
         )
     }
+
+    @Test
+    fun maxCodeCharsConstant() {
+        assertEquals(200_000, DocumentDraftStore.MAX_CODE_CHARS)
+    }
 }

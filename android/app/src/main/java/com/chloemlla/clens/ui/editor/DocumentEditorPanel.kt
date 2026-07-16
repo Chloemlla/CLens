@@ -475,6 +475,16 @@ private fun LeafEditDialog(
                                             text = DocNodeCodec.nowIsoDate()
                                         }
                                     }
+                                    DocValueType.GeoPoint -> {
+                                        if (DocNodeCodec.parseGeoPoint(text) == null) {
+                                            text = DocNodeCodec.encodeGeoPoint(0.0, 0.0)
+                                        }
+                                    }
+                                    DocValueType.Binary -> {
+                                        if (DocNodeCodec.parseBinary(text) == null) {
+                                            text = DocNodeCodec.encodeBinary("", "00")
+                                        }
+                                    }
                                     DocValueType.Boolean -> {
                                         boolValue = text.equals("true", ignoreCase = true)
                                     }
@@ -585,6 +595,88 @@ private fun LeafEditDialog(
                             ) { Text("设为当前") }
                         }
                     }
+                    DocValueType.GeoPoint -> {
+                        val point = DocNodeCodec.parseGeoPoint(text)
+                        var latText by remember(node.pathKey, text) {
+                            mutableStateOf(point?.first?.toString() ?: "0.0")
+                        }
+                        var lngText by remember(node.pathKey, text) {
+                            mutableStateOf(point?.second?.toString() ?: "0.0")
+                        }
+                        OutlinedTextField(
+                            value = latText,
+                            onValueChange = {
+                                latText = it
+                                val lat = it.toDoubleOrNull()
+                                val lng = lngText.toDoubleOrNull()
+                                if (lat != null && lng != null) {
+                                    text = DocNodeCodec.encodeGeoPoint(lat, lng)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = enabled,
+                            label = { Text("纬度 lat (-90..90)") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = lngText,
+                            onValueChange = {
+                                lngText = it
+                                val lat = latText.toDoubleOrNull()
+                                val lng = it.toDoubleOrNull()
+                                if (lat != null && lng != null) {
+                                    text = DocNodeCodec.encodeGeoPoint(lat, lng)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = enabled,
+                            label = { Text("经度 lng (-180..180)") },
+                            singleLine = true,
+                        )
+                        Text(
+                            text = "保存为 GeoJSON Point（coordinates=[lng,lat]）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    DocValueType.Binary -> {
+                        val binary = DocNodeCodec.parseBinary(text)
+                        var base64Text by remember(node.pathKey, text) {
+                            mutableStateOf(binary?.base64.orEmpty())
+                        }
+                        var subTypeText by remember(node.pathKey, text) {
+                            mutableStateOf(binary?.subType ?: "00")
+                        }
+                        OutlinedTextField(
+                            value = base64Text,
+                            onValueChange = {
+                                base64Text = it
+                                text = DocNodeCodec.encodeBinary(it, subTypeText)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = enabled,
+                            label = { Text("Base64") },
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                            minLines = 3,
+                        )
+                        OutlinedTextField(
+                            value = subTypeText,
+                            onValueChange = {
+                                subTypeText = it
+                                text = DocNodeCodec.encodeBinary(base64Text, it)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = enabled,
+                            label = { Text("subType (hex, 默认 00)") },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        )
+                        Text(
+                            text = "保存为 Extended JSON {\$binary:{base64,subType}}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     else -> {
                         OutlinedTextField(
                             value = text,
@@ -613,6 +705,8 @@ private fun LeafEditDialog(
                 enabled = enabled && when (type) {
                     DocValueType.ObjectId -> DocNodeCodec.isValidObjectId(text)
                     DocValueType.Date -> DocNodeCodec.parseDateMillis(text) != null
+                    DocValueType.GeoPoint -> DocNodeCodec.parseGeoPoint(text) != null
+                    DocValueType.Binary -> DocNodeCodec.parseBinary(text) != null
                     else -> true
                 },
                 onClick = {
@@ -824,6 +918,8 @@ private fun convertTypeOptions(): List<DocValueType> {
         DocValueType.Null,
         DocValueType.ObjectId,
         DocValueType.Date,
+        DocValueType.GeoPoint,
+        DocValueType.Binary,
     )
 }
 
@@ -837,6 +933,8 @@ private fun normalizeEditableType(type: DocValueType): DocValueType {
         DocValueType.Null,
         DocValueType.ObjectId,
         DocValueType.Date,
+        DocValueType.GeoPoint,
+        DocValueType.Binary,
         -> type
         else -> DocValueType.String
     }

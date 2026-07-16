@@ -35,6 +35,12 @@ class DocumentDraftStore(context: Context) {
 
     fun save(draft: DocumentDraft) {
         val key = draftKey(draft.connectionId, draft.database, draft.collection, draft.documentId)
+        // Soft cap for SP-backed drafts; oversized payloads are truncated with marker.
+        val codeText = if (draft.codeText.length > MAX_CODE_CHARS) {
+            draft.codeText.take(MAX_CODE_CHARS) + "\n/* draft truncated for local storage */"
+        } else {
+            draft.codeText
+        }
         val payload = JSONObject()
             .put("draftId", draft.draftId.ifBlank { UUID.randomUUID().toString() })
             .put("connectionId", draft.connectionId)
@@ -43,7 +49,7 @@ class DocumentDraftStore(context: Context) {
             .put("documentId", draft.documentId)
             .put("updatedAtMillis", draft.updatedAtMillis)
             .put("mode", draft.mode)
-            .put("codeText", draft.codeText)
+            .put("codeText", codeText)
             .put("source", draft.source)
             .toString()
         prefs.edit { putString(key, payload) }
@@ -69,6 +75,23 @@ class DocumentDraftStore(context: Context) {
         val key = draftKey(connectionId, database, collection, documentId)
         prefs.edit { remove(key) }
     }
+
+    /**
+     * Phase 4 decision: keep SharedPreferences backend.
+     * Room is deferred until multi-draft history / large payloads become necessary.
+     */
+    fun listDrafts(limit: Int = 50): List<DocumentDraft> {
+        val all = prefs.all
+        return all.entries
+            .asSequence()
+            .mapNotNull { (_, value) -> value as? String }
+            .mapNotNull { raw -> runCatching { parse(raw) }.getOrNull() }
+            .sortedByDescending { it.updatedAtMillis }
+            .take(limit.coerceAtLeast(1))
+            .toList()
+    }
+
+    fun draftCount(): Int = prefs.all.size
 
     private fun parse(raw: String): DocumentDraft {
         val obj = JSONObject(raw)

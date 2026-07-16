@@ -89,4 +89,30 @@ class DocNodeCodecTest {
         assertTrue(DocNodeCodec.findNode(deleted, "a") != null)
     }
 
+
+    @Test
+    fun geoPointAndBinaryRoundTrip() {
+        val geoJson = """{"loc":{"type":"Point","coordinates":[121.5,31.2]}}"""
+        val geoRoot = DocNodeCodec.parse(geoJson)
+        val loc = DocNodeCodec.findNode(geoRoot, "loc")
+        assertEquals(DocValueType.GeoPoint, loc?.type)
+        val point = DocNodeCodec.parseGeoPoint(loc?.scalar)
+        assertEquals(31.2, point!!.first, 0.0001)
+        assertEquals(121.5, point.second, 0.0001)
+        val geoSerialized = DocNodeCodec.serialize(geoRoot)
+        assertTrue(geoSerialized.contains("Point"))
+        assertTrue(geoSerialized.contains("121.5"))
+
+        val binJson = "{\"blob\":{\"${'$'}binary\":{\"base64\":\"AQID\",\"subType\":\"00\"}}}"
+        val binRoot = DocNodeCodec.parse(binJson)
+        val blob = DocNodeCodec.findNode(binRoot, "blob")
+        assertEquals(DocValueType.Binary, blob?.type)
+        val binary = DocNodeCodec.parseBinary(blob?.scalar)
+        assertEquals("AQID", binary!!.base64)
+        assertEquals("00", binary.subType)
+        val binSerialized = DocNodeCodec.serialize(binRoot)
+        assertTrue(binSerialized.contains("AQID"))
+        assertTrue(binSerialized.contains("binary"))
+    }
+
 }
