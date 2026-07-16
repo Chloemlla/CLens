@@ -76,11 +76,53 @@ class SqlToMongoTranslatorTest {
     }
 
     @Test
-    fun rejectsJoinAndGroupBy() {
+    fun rejectsJoinAndGroupByAndNot() {
         assertRejects("SELECT * FROM a JOIN b ON a.id = b.id")
         assertRejects("SELECT role, COUNT(*) FROM users GROUP BY role")
-        assertRejects("SELECT * FROM users WHERE age > 18 OR status = 'x'")
+        assertRejects("SELECT * FROM users WHERE NOT age > 18")
         assertRejects("UPDATE users SET age = 1")
+    }
+
+    @Test
+    fun translatesOrBetweenAliasesAndParens() {
+        val sql = """
+            SELECT name AS n, age
+            FROM users
+            WHERE (status = 'active' OR status = 'trial')
+              AND age BETWEEN 18 AND 60
+        """.trimIndent()
+        val result = SqlToMongoTranslator.translate(sql)
+        val projection = JSONObject(result.projectionJson)
+        assertEquals(1, projection.getInt("name"))
+        assertEquals(1, projection.getInt("age"))
+        val filter = JSONObject(result.filterJson)
+        val and = filter.getJSONArray("\$and")
+        assertEquals(2, and.length())
+        var sawOr = false
+        var sawAge = false
+        for (i in 0 until and.length()) {
+            val obj = and.getJSONObject(i)
+            if (obj.has("\$or")) {
+                sawOr = true
+                assertEquals(2, obj.getJSONArray("\$or").length())
+            }
+            if (obj.has("age")) {
+                sawAge = true
+                val age = obj.getJSONObject("age")
+                assertEquals(18L, age.getLong("\$gte"))
+                assertEquals(60L, age.getLong("\$lte"))
+            }
+        }
+        assertTrue(sawOr)
+        assertTrue(sawAge)
+    }
+
+    @Test
+    fun acceptsDistinctWithoutChangingProjectionSemantics() {
+        val result = SqlToMongoTranslator.translate("SELECT DISTINCT name FROM users WHERE age >= 1")
+        assertEquals("users", result.collection)
+        val projection = JSONObject(result.projectionJson)
+        assertEquals(1, projection.getInt("name"))
     }
 
     private fun assertRejects(sql: String) {

@@ -278,7 +278,7 @@ private fun SqlUsageGuide(
                 "3. 写完 SQL 后点「翻译预览」核对 Mongo 语句，再点「执行 SQL」。",
                 "4. 支持：SELECT / WHERE / ORDER BY / LIMIT / OFFSET。",
                 "5. 条件支持：= != <> > >= < <=、AND、IN、LIKE、IS NULL / IS NOT NULL。",
-                "6. 不支持：JOIN、GROUP BY、OR、函数、子查询、写操作。",
+                "6. 不支持：JOIN、GROUP BY、NOT、聚合函数、子查询、写操作。",
                 "7. 翻译在本地完成，仅在预览/执行时解析，避免边输入边卡顿。",
                 "8. 执行成功后会写入查询历史（保存的是 Mongo 条件，不是原始 SQL）。",
             )

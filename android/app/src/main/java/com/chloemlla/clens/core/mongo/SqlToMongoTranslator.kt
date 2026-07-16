@@ -17,7 +17,9 @@ class SqlTranslateException(message: String) : IllegalArgumentException(message)
 
 /**
  * Phone-friendly SQL subset → Mongo find mapping.
- * Pure CPU translator; no I/O. Supports SELECT/FROM/WHERE/ORDER BY/LIMIT/OFFSET only.
+ * Pure CPU translator; no I/O.
+ * Supports SELECT/FROM/WHERE/ORDER BY/LIMIT/OFFSET with AND/OR/BETWEEN/IN/LIKE/IS NULL,
+ * limited parenthesized boolean groups, and SELECT aliases (AS).
  */
 object SqlToMongoTranslator {
     private val forbidden = listOf(
@@ -25,7 +27,7 @@ object SqlToMongoTranslator {
         "GROUP BY", "HAVING", "UNION", "INTERSECT", "EXCEPT",
         "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT",
         "CREATE", "DROP", "ALTER", "TRUNCATE", "WITH",
-        "INTO", "VALUES", "DISTINCT",
+        "INTO", "VALUES",
         "UNION ALL",
     )
 
@@ -40,7 +42,10 @@ object SqlToMongoTranslator {
         val normalized = raw.replace(Regex("\\s+"), " ").trim()
         rejectForbidden(normalized)
 
-        var rest = normalized
+        // DISTINCT cannot be honored by find(); accept syntax without client-side dedupe.
+        val normalizedNoDistinct = normalized.replace(Regex("(?i)^SELECT\\s+DISTINCT\\s+"), "SELECT ")
+
+        var rest = normalizedNoDistinct
         var skip: Int? = null
         var limit: Int? = null
         var orderBy: String? = null
@@ -116,7 +121,7 @@ object SqlToMongoTranslator {
     }
 
     private fun rejectForbidden(sql: String) {
-        // Mask supported constructs that contain otherwise-forbidden tokens (e.g. IS NOT NULL).
+        // Mask supported constructs that contain otherwise-forbidden tokens.
         val masked = sql
             .replace(Regex("(?i)IS\\s+NOT\\s+NULL"), " IS_NOT_NULL ")
             .replace(Regex("(?i)IS\\s+NULL"), " IS_NULL ")
@@ -128,9 +133,13 @@ object SqlToMongoTranslator {
                 throw SqlTranslateException("暂不支持 SQL 关键字/结构：$word")
             }
         }
-        if (masked.contains('(') || masked.contains(')')) {
-            // Allow only IN (...) parentheses; reject other groupings for deterministic MVP.
-            throw SqlTranslateException("暂不支持括号表达式/函数调用（IN 列表除外）。")
+        if (Regex("(?i)\\bCOUNT\\s*\\(").containsMatchIn(sql) ||
+            Regex("(?i)\\bSUM\\s*\\(").containsMatchIn(sql) ||
+            Regex("(?i)\\bAVG\\s*\\(").containsMatchIn(sql) ||
+            Regex("(?i)\\bMIN\\s*\\(").containsMatchIn(sql) ||
+            Regex("(?i)\\bMAX\\s*\\(").containsMatchIn(sql)
+        ) {
+            throw SqlTranslateException("聚合函数请改用 Aggregate JSON（find 子集不支持 COUNT/SUM/AVG/...）。")
         }
     }
 
@@ -149,40 +158,159 @@ object SqlToMongoTranslator {
             if (part.isEmpty()) {
                 throw SqlTranslateException("SELECT 字段列表格式无效。")
             }
-            if (part.contains(' ', ignoreCase = false) && !part.startsWith("\"") && !part.startsWith("`")) {
-                // reject aliases like "name AS n" or expressions
-                if (Regex("""(?i)\s+AS\s+""").containsMatchIn(part) || part.contains(' ')) {
-                    throw SqlTranslateException("暂不支持字段别名或表达式：$part")
-                }
-            }
-            val field = parseIdentifier(part, "字段")
+            val field = parseSelectItem(part)
             projection.put(field, 1)
         }
         return projection
     }
 
-    private fun parseWhere(where: String): JSONObject {
-        // Reject unsupported boolean operators while allowing identifiers like "note".
-        // "IS NOT NULL" contains the token NOT but is supported; only unary NOT is rejected.
-        if (containsKeywordOutsideStrings(where, "OR") ||
-            containsUnaryNotOutsideStrings(where) ||
-            containsKeywordOutsideStrings(where, "BETWEEN") ||
-            containsKeywordOutsideStrings(where, "EXISTS")
-        ) {
-            throw SqlTranslateException("WHERE 暂仅支持 AND 连接的简单条件（不支持 OR/NOT/BETWEEN/EXISTS）。")
+    /**
+     * Accepts `field`, `field AS alias`, or `field alias`.
+     * Mongo find projection uses the source field path (aliases are not renamed).
+     */
+    private fun parseSelectItem(part: String): String {
+        val asMatch = Regex("(?i)^(.+?)\\s+AS\\s+(.+)$").matchEntire(part)
+        if (asMatch != null) {
+            val source = asMatch.groupValues[1].trim()
+            parseIdentifier(asMatch.groupValues[2].trim(), "别名")
+            return parseIdentifier(source, "字段")
         }
-        val parts = splitKeyword(where, "AND")
-        if (parts.isEmpty()) {
-            throw SqlTranslateException("WHERE 条件为空。")
+        val spaceAlias = Regex("^(.+?)\\s+([A-Za-z_][A-Za-z0-9_]*)$").matchEntire(part)
+        if (spaceAlias != null && !part.contains('(')) {
+            val source = spaceAlias.groupValues[1].trim()
+            if (!source.contains(' ') && (source.startsWith("`") || source.startsWith("\"") || source.startsWith("_") || source[0].isLetter())) {
+                parseIdentifier(spaceAlias.groupValues[2].trim(), "别名")
+                return parseIdentifier(source, "字段")
+            }
+        }
+        return parseIdentifier(part, "字段")
+    }
+
+    private fun parseWhere(where: String): JSONObject {
+        if (containsUnaryNotOutsideStrings(where) || containsKeywordOutsideStrings(where, "EXISTS")) {
+            throw SqlTranslateException("WHERE 不支持 NOT/EXISTS；请改用 JSON 模式。")
+        }
+        return parseBooleanExpr(where.trim())
+    }
+
+    /**
+     * Boolean expression parser with precedence: parentheses > AND > OR.
+     */
+    private fun parseBooleanExpr(expr: String): JSONObject {
+        val orParts = splitKeywordTopLevel(expr, "OR")
+        if (orParts.size > 1) {
+            val arr = JSONArray()
+            orParts.forEach { part -> arr.put(parseBooleanExpr(part)) }
+            return JSONObject().put("\$or", arr)
+        }
+        val andParts = splitKeywordTopLevel(expr, "AND")
+        if (andParts.size > 1) {
+            val root = JSONObject()
+            var canFlatten = true
+            for (part in andParts) {
+                val obj = parseBooleanExpr(part)
+                if (canFlatten && canFlattenInto(root, obj)) {
+                    mergeObject(root, obj)
+                } else {
+                    canFlatten = false
+                    break
+                }
+            }
+            if (canFlatten) return root
+            val full = JSONArray()
+            andParts.forEach { full.put(parseBooleanExpr(it)) }
+            return JSONObject().put("\$and", full)
+        }
+        val trimmed = expr.trim()
+        if (trimmed.startsWith("(") && trimmed.endsWith(")") && isWrappingParens(trimmed)) {
+            return parseBooleanExpr(trimmed.substring(1, trimmed.length - 1).trim())
         }
         val root = JSONObject()
-        parts.forEach { parsePredicate(it.trim(), root) }
+        parsePredicate(trimmed, root)
         return root
+    }
+
+    private fun canFlattenInto(root: JSONObject, obj: JSONObject): Boolean {
+        if (obj.has("\$or") || obj.has("\$and")) return false
+        obj.keys().asSequence().forEach { key ->
+            if (root.has(key)) return false
+        }
+        return true
+    }
+
+    private fun mergeObject(target: JSONObject, source: JSONObject) {
+        source.keys().asSequence().forEach { key ->
+            target.put(key, source.get(key))
+        }
+    }
+
+    private fun isWrappingParens(text: String): Boolean {
+        if (!text.startsWith("(") || !text.endsWith(")")) return false
+        var depth = 0
+        var inSingle = false
+        var inDouble = false
+        for (i in text.indices) {
+            val c = text[i]
+            when {
+                c == '\'' && !inDouble -> inSingle = !inSingle
+                c == '"' && !inSingle -> inDouble = !inDouble
+                !inSingle && !inDouble && c == '(' -> depth++
+                !inSingle && !inDouble && c == ')' -> {
+                    depth--
+                    if (depth == 0 && i < text.lastIndex) return false
+                }
+            }
+        }
+        return depth == 0
+    }
+
+    private fun splitKeywordTopLevel(text: String, keyword: String): List<String> {
+        val parts = mutableListOf<String>()
+        val pattern = Regex("""(?i)(?<![A-Za-z0-9_`"])${Regex.escape(keyword)}(?![A-Za-z0-9_`"])""")
+        var start = 0
+        var inSingle = false
+        var inDouble = false
+        var depth = 0
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '\'' && !inDouble -> inSingle = !inSingle
+                c == '"' && !inSingle -> inDouble = !inDouble
+                !inSingle && !inDouble && c == '(' -> depth++
+                !inSingle && !inDouble && c == ')' -> depth--
+                !inSingle && !inDouble && depth == 0 -> {
+                    val match = pattern.find(text, i)
+                    if (match != null && match.range.first == i) {
+                        // Do not split the AND that belongs to BETWEEN x AND y.
+                        if (keyword.equals("AND", ignoreCase = true) && isBetweenAndConnector(text, i)) {
+                            i = match.range.last + 1
+                            continue
+                        }
+                        parts += text.substring(start, i)
+                        i = match.range.last + 1
+                        start = i
+                        continue
+                    }
+                }
+            }
+            i++
+        }
+        parts += text.substring(start)
+        return parts.map { it.trim() }.filter { it.isNotEmpty() }
     }
 
     private fun parsePredicate(expr: String, root: JSONObject) {
         if (expr.isEmpty()) {
             throw SqlTranslateException("WHERE 存在空条件。")
+        }
+        val between = Regex("""(?i)^(.+?)\s+BETWEEN\s+(.+?)\s+AND\s+(.+)$""").matchEntire(expr)
+        if (between != null) {
+            val field = parseIdentifier(between.groupValues[1].trim(), "字段")
+            val low = parseScalar(between.groupValues[2].trim())
+            val high = parseScalar(between.groupValues[3].trim())
+            mergeCondition(root, field, JSONObject().put("\$gte", low).put("\$lte", high))
+            return
         }
         val isNull = Regex("""(?i)^(.+?)\s+IS\s+NULL$""").matchEntire(expr)
         if (isNull != null) {
