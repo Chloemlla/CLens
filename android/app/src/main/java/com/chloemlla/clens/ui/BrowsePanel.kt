@@ -191,20 +191,18 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         when {
             state.collectionStatsError != null -> InfoCard(title = "集合统计不可用", lines = listOf(state.collectionStatsError ?: ""))
             state.selectedCollectionStats != null -> {
-                val stats = state.selectedCollectionStats
-                if (stats != null) {
-                    CollectionStatsQuickPanel(stats = stats)
-                }
+                val stats = checkNotNull(state.selectedCollectionStats)
+                CollectionStatsQuickPanel(stats = stats)
                 InfoCard(
                     title = "集合统计",
                     lines = listOf(
-                        "type: " + (stats?.type ?: "-"),
-                        "count: " + (stats?.count?.toString() ?: "-"),
-                        "size: " + (stats?.size?.toString() ?: "-"),
-                        "storageSize: " + (stats?.storageSize?.toString() ?: "-"),
-                        "totalIndexSize: " + (stats?.totalIndexSize?.toString() ?: "-"),
-                        "avgObjSize: " + (stats?.avgObjSize?.toString() ?: "-"),
-                        "nindexes: " + (stats?.nindexes?.toString() ?: "-"),
+                        "type: " + stats.type,
+                        "count: " + (stats.count?.toString() ?: "-"),
+                        "size: " + (stats.size?.toString() ?: "-"),
+                        "storageSize: " + (stats.storageSize?.toString() ?: "-"),
+                        "totalIndexSize: " + (stats.totalIndexSize?.toString() ?: "-"),
+                        "avgObjSize: " + (stats.avgObjSize?.toString() ?: "-"),
+                        "nindexes: " + (stats.nindexes?.toString() ?: "-"),
                     ),
                 )
             }

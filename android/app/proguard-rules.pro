@@ -149,3 +149,10 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.ietf.jgss.**
 
+# SSHJ optionally depends on net.i2p.crypto:eddsa for Ed25519 keys. That library
+# references JDK-internal sun.security.x509.X509Key, which is absent on Android.
+# R8 treats the missing class as a hard failure during productionRelease minify.
+-keep class net.i2p.crypto.eddsa.** { *; }
+-dontwarn net.i2p.crypto.eddsa.**
+-dontwarn sun.security.**
+-dontwarn sun.security.x509.X509Key
