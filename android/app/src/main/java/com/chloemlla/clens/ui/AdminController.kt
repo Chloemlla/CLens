@@ -1,5 +1,11 @@
 package com.chloemlla.clens.ui
 
+import com.chloemlla.clens.core.mongo.OpsCounterSampler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
 
 class AdminController(
@@ -7,6 +13,9 @@ class AdminController(
 ) {
     private val state get() = ctx.state
     private val repository get() = ctx.repository
+    private val sampler = OpsCounterSampler()
+    private var samplingJob: Job? = null
+    private var samplingVisible: Boolean = false
 
     fun setIndexFlags(unique: Boolean? = null, sparse: Boolean? = null) {
         state.update {
@@ -75,7 +84,9 @@ class AdminController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DropIndex,
                     target = name,
-                    message = "将删除索引 `" + name + "`。",
+                    message = "将永久删除索引 `" + name + "`。此操作不可恢复，请长按 3 秒确认。",
+                    confirmToken = name,
+                    confirmMode = DestructiveConfirmMode.LongPress,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -119,11 +130,84 @@ class AdminController(
         }
     }
 
+    /**
+     * Start/stop the ~5s Ops Counter sampling loop based on Admin panel visibility.
+     */
+    fun setOpsCounterVisible(visible: Boolean, scope: CoroutineScope) {
+        samplingVisible = visible
+        if (!visible) {
+            stopOpsCounterSampling(keepHistory = true)
+            return
+        }
+        if (!state.value.isConnected) {
+            stopOpsCounterSampling(keepHistory = true)
+            return
+        }
+        startOpsCounterSampling(scope)
+    }
+
+    fun stopOpsCounterSampling(keepHistory: Boolean = false) {
+        samplingJob?.cancel()
+        samplingJob = null
+        if (!keepHistory) {
+            sampler.reset()
+            state.update {
+                it.copy(
+                    opsCounterState = null,
+                    opsCounterSampling = false,
+                    opsCounterError = null,
+                )
+            }
+        } else {
+            state.update { it.copy(opsCounterSampling = false) }
+        }
+    }
+
+    private fun startOpsCounterSampling(scope: CoroutineScope) {
+        if (samplingJob?.isActive == true) {
+            state.update { it.copy(opsCounterSampling = true) }
+            return
+        }
+        state.update { it.copy(opsCounterSampling = true, opsCounterError = null) }
+        samplingJob = scope.launch {
+            while (isActive && samplingVisible && state.value.isConnected) {
+                val snapshotResult = runCatching { repository.fetchOpCounters() }
+                snapshotResult.onSuccess { snapshot ->
+                    val sample = sampler.onSnapshot(snapshot)
+                    if (sample != null) {
+                        state.update {
+                            it.copy(
+                                opsCounterState = sample,
+                                opsCounterError = null,
+                                opsCounterSampling = true,
+                            )
+                        }
+                    } else {
+                        // Baseline only; preserve previous sample state if any.
+                        state.update {
+                            it.copy(opsCounterError = null, opsCounterSampling = true)
+                        }
+                    }
+                }.onFailure { error ->
+                    state.update {
+                        it.copy(
+                            opsCounterError = error.message ?: "opcounters 采样失败",
+                            opsCounterSampling = true,
+                        )
+                    }
+                }
+                delay(OpsCounterSampler.DEFAULT_INTERVAL_MS)
+            }
+            state.update { it.copy(opsCounterSampling = false) }
+        }
+    }
+
     private suspend fun loadCurrentOps(updateStatus: Boolean = false) {
         val ops = runCatching { repository.listCurrentOps() }
         state.update { current ->
             current.copy(
-                currentOps = ops.getOrDefault(emptyList()),
+                currentOps = ops.getOrDefault(emptyList())
+                    .sortedByDescending { it.secsRunning ?: -1L },
                 currentOpsListError = ops.exceptionOrNull()?.message,
                 currentOpsJson = if (ops.isSuccess) {
                     ops.getOrNull()?.joinToString(
@@ -150,7 +234,9 @@ class AdminController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.KillOp,
                     target = opId,
-                    message = "将 killOp opid=`" + opId + "`。",
+                    message = "将 killOp opid=`" + opId + "`。请长按 3 秒确认。",
+                    confirmToken = opId,
+                    confirmMode = DestructiveConfirmMode.LongPress,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -185,3 +271,5 @@ class AdminController(
         }
     }
 }
+
+

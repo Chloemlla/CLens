@@ -9,15 +9,19 @@ import com.chloemlla.clens.core.mongo.GridFsFileSummary
 import com.chloemlla.clens.core.mongo.MongoUserSummary
 import com.chloemlla.clens.core.mongo.MongoRoleSummary
 import com.chloemlla.clens.core.mongo.QueryHistoryEntry
+import com.chloemlla.clens.core.mongo.QueryFavoriteEntry
+import com.chloemlla.clens.core.mongo.VisualFilterClause
 import com.chloemlla.clens.core.mongo.AuditLogEntry
 import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
+import com.chloemlla.clens.core.mongo.OpsCounterSampleState
 import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.ui.editor.DocumentEditorState
 
 enum class ResultViewMode {
     Json,
     Table,
+    Cards,
 }
 
 enum class DestructiveAction {
@@ -109,6 +113,10 @@ data class ClensUiState(
     val querySortJson: String = "{}",
     val queryProjectionJson: String = "{}",
     val queryPipelineJson: String = "[\n  { \"\$match\": {} }\n]",
+    val queryVisualMode: Boolean = true,
+    val queryVisualClauses: List<VisualFilterClause> = listOf(VisualFilterClause()),
+    val queryFavoriteNameInput: String = "",
+    val queryFavorites: List<QueryFavoriteEntry> = emptyList(),
     val queryResults: List<String> = emptyList(),
     val explainJson: String = "",
     val queryDurationMillis: Long? = null,
@@ -156,6 +164,9 @@ data class ClensUiState(
     val auditLog: List<AuditLogEntry> = emptyList(),
     val currentOps: List<CurrentOpSummary> = emptyList(),
     val currentOpsListError: String? = null,
+    val opsCounterState: OpsCounterSampleState? = null,
+    val opsCounterSampling: Boolean = false,
+    val opsCounterError: String? = null,
     val collectionValidator: CollectionValidatorInfo? = null,
     val collectionValidatorError: String? = null,
     val validatorJsonInput: String = "{}",
@@ -167,6 +178,9 @@ data class ClensUiState(
     val collectionSearchQuery: String = "",
     val biometricEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.System,
+    val connectionHealthy: Boolean = true,
+    val reconnecting: Boolean = false,
+    val disconnectNotice: String? = null,
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,

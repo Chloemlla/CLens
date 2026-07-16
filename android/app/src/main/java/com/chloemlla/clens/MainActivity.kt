@@ -2,7 +2,6 @@ package com.chloemlla.clens
 
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,20 +17,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.SecurityPrefsStore
 import com.chloemlla.clens.ui.ClensApp
 import com.chloemlla.clens.ui.ClensTheme
 import com.chloemlla.clens.ui.ClensViewModel
+import com.chloemlla.clens.ui.security.BiometricLockGate
 import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import com.chloemlla.lumen.crash.LumenCrash
 import com.chloemlla.lumen.crash.ui.LumenCrashReportScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var viewModel: ClensViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,9 +41,10 @@ class MainActivity : ComponentActivity() {
         recordBreadcrumbSafe("MainActivity.onCreate")
 
         val app = application as ClensApplication
+        val securityPrefs = SecurityPrefsStore(applicationContext)
         var initialStartupReport = app.loadPendingCrashReport()
         val initialViewModel = if (initialStartupReport == null) {
-            createViewModel(app)?.also { viewModel = it }
+            createViewModel(app, securityPrefs)?.also { viewModel = it }
         } else {
             null
         }
@@ -58,48 +61,54 @@ class MainActivity : ComponentActivity() {
         setContent {
             var startupReport by remember { mutableStateOf(initialStartupReport) }
             var bootstrapError by remember { mutableStateOf(startupError) }
-            ClensTheme {
-                val report = startupReport
-                when {
-                    report != null -> {
-                        LumenCrashReportScreen(
-                            report = report,
-                            onContinue = {
-                                app.clearStartupCrashReport()
-                                startupReport = null
-                                if (initialViewModel == null) {
-                                    recreate()
-                                }
-                            },
-                        )
-                    }
-                    initialViewModel != null -> {
-                        ClensApp(viewModel = initialViewModel)
-                    }
-                    else -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = "CLens failed to start",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                text = bootstrapError ?: "Unknown startup failure.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Button(
-                                onClick = {
-                                    bootstrapError = null
-                                    recreate()
+            val themeMode = remember { mutableStateOf(securityPrefs.getThemeMode()) }
+            ClensTheme(themeMode = themeMode.value) {
+                BiometricLockGate(securityPrefs = securityPrefs) {
+                    val report = startupReport
+                    when {
+                        report != null -> {
+                            LumenCrashReportScreen(
+                                report = report,
+                                onContinue = {
+                                    app.clearStartupCrashReport()
+                                    startupReport = null
+                                    if (initialViewModel == null) {
+                                        recreate()
+                                    }
                                 },
+                            )
+                        }
+                        initialViewModel != null -> {
+                            ClensApp(
+                                viewModel = initialViewModel,
+                                onThemeModeChanged = { mode -> themeMode.value = mode },
+                            )
+                        }
+                        else -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Text("Retry")
+                                Text(
+                                    text = "CLens failed to start",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = bootstrapError ?: "Unknown startup failure.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Button(
+                                    onClick = {
+                                        bootstrapError = null
+                                        recreate()
+                                    },
+                                ) {
+                                    Text("Retry")
+                                }
                             }
                         }
                     }
@@ -108,7 +117,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun createViewModel(app: ClensApplication): ClensViewModel? {
+    private fun createViewModel(
+        app: ClensApplication,
+        securityPrefs: SecurityPrefsStore,
+    ): ClensViewModel? {
         return try {
             val store = MongoConnectionStore(applicationContext)
             val localStore = LocalAppStore(applicationContext)
@@ -117,7 +129,7 @@ class MainActivity : ComponentActivity() {
             val repository = MongoAdminRepository(sessionManager)
             ViewModelProvider(
                 this,
-                ClensViewModel.Factory(store, localStore, draftStore, sessionManager, repository),
+                ClensViewModel.Factory(store, localStore, draftStore, securityPrefs, sessionManager, repository),
             )[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             Log.e(TAG, "Failed to create ClensViewModel", throwable)

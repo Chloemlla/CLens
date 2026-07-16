@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.core.storage.ThemeMode
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF1D4ED8),
@@ -154,8 +155,16 @@ private val ClensTypography = Typography(
 )
 
 @Composable
-fun ClensTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) DarkColors else LightColors
+fun ClensTheme(
+    themeMode: ThemeMode = ThemeMode.System,
+    content: @Composable () -> Unit,
+) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.System -> isSystemInDarkTheme()
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+    }
+    val colors = if (darkTheme) DarkColors else LightColors
     MaterialTheme(
         colorScheme = colors,
         shapes = ClensShapes,
