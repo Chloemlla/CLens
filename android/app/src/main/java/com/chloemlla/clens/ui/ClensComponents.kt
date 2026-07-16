@@ -5,6 +5,7 @@ import org.json.JSONObject
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.chloemlla.clens.core.export.OutgoingShareSpec
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -752,12 +753,14 @@ internal fun copyTextToClipboard(context: android.content.Context, label: String
 }
 
 internal fun shareText(context: android.content.Context, subject: String, text: String) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, subject)
-        putExtra(Intent.EXTRA_TEXT, text)
+    val spec = OutgoingShareSpec.text(subject = subject, body = text)
+    val intent = Intent(spec.action).apply {
+        type = spec.mimeType
+        putExtra(Intent.EXTRA_SUBJECT, spec.subject)
+        putExtra(Intent.EXTRA_TEXT, spec.text)
     }
-    context.startActivity(Intent.createChooser(intent, subject))
+    // External share via chooser — not an implicit launch of an unexported app component.
+    context.startActivity(Intent.createChooser(intent, spec.subject))
 }
 
 internal fun shareFile(
@@ -766,16 +769,21 @@ internal fun shareFile(
     file: java.io.File,
     mimeType: String,
 ) {
+    val spec = OutgoingShareSpec.file(subject = subject, mimeType = mimeType)
     val authority = context.packageName + ".fileprovider"
     val uri: Uri = FileProvider.getUriForFile(context, authority, file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = mimeType
-        putExtra(Intent.EXTRA_SUBJECT, subject)
+    val intent = Intent(spec.action).apply {
+        type = spec.mimeType
+        putExtra(Intent.EXTRA_SUBJECT, spec.subject)
         putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        clipData = android.content.ClipData.newUri(context.contentResolver, subject, uri)
+        if (spec.requiresReadUriGrant) {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (spec.requiresClipData) {
+            clipData = android.content.ClipData.newUri(context.contentResolver, spec.subject, uri)
+        }
     }
-    context.startActivity(Intent.createChooser(intent, subject))
+    context.startActivity(Intent.createChooser(intent, spec.subject))
 }
 
 internal fun documentsToJsonArray(documents: List<String>): String {
