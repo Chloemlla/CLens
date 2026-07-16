@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Size
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -220,6 +221,7 @@ private fun QrScanDialog(
         }
     }
 
+    BackHandler(onBack = onDismiss)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("扫描二维码") },

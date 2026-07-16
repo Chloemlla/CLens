@@ -42,8 +42,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Keep system-window fitting enabled so windowSoftInputMode=adjustResize
-        // actually shrinks the Compose root when the IME opens.
+        // Android 16 forces edge-to-edge and removes windowOptOutEdgeToEdgeEnforcement.
+        // We still keep decor fitting enabled so windowSoftInputMode=adjustResize shrinks
+        // the Compose root when the IME opens (product requirement for editors).
+        // This is not the deprecated opt-out flag; predictive back is enabled in the manifest.
         WindowCompat.setDecorFitsSystemWindows(window, true)
         recordBreadcrumbSafe("MainActivity.onCreate")
 

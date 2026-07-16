@@ -34,6 +34,7 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
@@ -193,6 +194,9 @@ fun ClensApp(
     }
 
     state.pendingDestructive?.let { pending ->
+        BackHandler(enabled = true) {
+            viewModel.cancelDestructive()
+        }
         DestructiveConfirmDialog(
             pending = pending,
             confirmInput = state.destructiveConfirmInput,

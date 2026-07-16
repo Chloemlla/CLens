@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -445,6 +446,8 @@ private fun LeafEditDialog(
         mutableStateOf(node.scalar.equals("true", ignoreCase = true))
     }
 
+    BackHandler(onBack = onDismiss)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("编辑 " + node.displayLabel) },
@@ -757,6 +760,7 @@ private fun FullScreenStringEditorDialog(
     onConfirm: (String) -> Unit,
 ) {
     var text by remember(title, initialValue) { mutableStateOf(initialValue) }
+    BackHandler(onBack = onDismiss)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("全屏编辑 · $title") },

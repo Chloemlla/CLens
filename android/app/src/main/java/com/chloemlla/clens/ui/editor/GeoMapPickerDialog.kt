@@ -7,6 +7,7 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -35,6 +36,8 @@ internal fun GeoMapPickerDialog(
 ) {
     var lat by remember(initialLat) { mutableStateOf(initialLat.coerceIn(-90.0, 90.0)) }
     var lng by remember(initialLng) { mutableStateOf(initialLng.coerceIn(-180.0, 180.0)) }
+
+    BackHandler(onBack = onDismiss)
 
     AlertDialog(
         onDismissRequest = onDismiss,

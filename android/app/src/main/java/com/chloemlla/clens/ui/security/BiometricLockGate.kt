@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -129,6 +130,10 @@ fun BiometricLockGate(
     }
 
     if (showFirstLaunchPrompt && !promptSeen && BiometricAuthHelper.canAuthenticate(context)) {
+        BackHandler(enabled = true) {
+            // Dismiss prompt only; do not finish activity from lock gate dialog.
+            showFirstLaunchPrompt = false
+        }
 
         AlertDialog(
             onDismissRequest = {
