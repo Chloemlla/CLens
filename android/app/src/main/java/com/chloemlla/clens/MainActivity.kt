@@ -23,6 +23,7 @@ import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.MongoConnectionStore
+import com.chloemlla.clens.core.storage.DocumentDraftStore
 import com.chloemlla.clens.ui.ClensApp
 import com.chloemlla.clens.ui.ClensTheme
 import com.chloemlla.clens.ui.ClensViewModel
@@ -111,11 +112,12 @@ class MainActivity : ComponentActivity() {
         return try {
             val store = MongoConnectionStore(applicationContext)
             val localStore = LocalAppStore(applicationContext)
+            val draftStore = DocumentDraftStore(applicationContext)
             val sessionManager = MongoSessionManager()
             val repository = MongoAdminRepository(sessionManager)
             ViewModelProvider(
                 this,
-                ClensViewModel.Factory(store, localStore, sessionManager, repository),
+                ClensViewModel.Factory(store, localStore, draftStore, sessionManager, repository),
             )[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             Log.e(TAG, "Failed to create ClensViewModel", throwable)

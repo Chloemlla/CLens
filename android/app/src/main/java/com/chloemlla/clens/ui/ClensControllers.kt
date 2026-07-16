@@ -6,6 +6,7 @@ import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
+import com.chloemlla.clens.core.storage.DocumentDraftStore
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -14,6 +15,7 @@ class ClensSessionContext(
     val state: MutableStateFlow<ClensUiState>,
     val connectionStore: MongoConnectionStore,
     val localStore: LocalAppStore,
+    val draftStore: DocumentDraftStore,
     val sessionManager: MongoSessionManager,
     val repository: MongoAdminRepository,
     val actions: ClensActionRunner,

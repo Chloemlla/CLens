@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.editor.DocumentEditorPanel
 
 @Composable
 internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -305,9 +306,21 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             ) { Text("导出当前页") }
         }
 
-        JsonField("文档编辑器 / 插入 JSON", state.editorJson, writeEnabled, minLines = 8) {
-            viewModel.updateText(ClensViewModel.Field.EditorJson, it)
-        }
+        DocumentEditorPanel(
+            editor = state.documentEditor,
+            enabled = !state.loading && state.selectedCollection.isNotBlank(),
+            editable = writeEnabled,
+            onModeChange = viewModel::setDocumentEditorMode,
+            onCodeChange = { viewModel.updateText(ClensViewModel.Field.EditorJson, it) },
+            onApplyCode = viewModel::applyCodeToTree,
+            onToggleCollapsed = viewModel::toggleDocumentNode,
+            onEditNode = viewModel::beginEditDocumentNode,
+            onCommitLeafEdit = viewModel::commitDocumentLeafEdit,
+            onDismissLeafEdit = viewModel::dismissEditDocumentNode,
+            onRestoreDraft = viewModel::restoreDocumentDraft,
+            onDiscardDraft = viewModel::discardDocumentDraft,
+            onStartBlankDocument = viewModel::startBlankDocument,
+        )
         ScrollableActionRow {
             Button(onClick = viewModel::insertDocuments, enabled = writeEnabled) { Text("插入") }
             OutlinedButton(onClick = viewModel::replaceSelectedDocument, enabled = writeEnabled) { Text("替换(_id)") }

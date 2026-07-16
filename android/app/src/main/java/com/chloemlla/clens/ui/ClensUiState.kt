@@ -12,6 +12,7 @@ import com.chloemlla.clens.core.mongo.QueryHistoryEntry
 import com.chloemlla.clens.core.mongo.AuditLogEntry
 import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
+import com.chloemlla.clens.ui.editor.DocumentEditorState
 
 enum class ResultViewMode {
     Json,
@@ -92,6 +93,7 @@ data class ClensUiState(
     val browseProjectionJson: String = "{}",
     val selectedDocumentJson: String = "",
     val editorJson: String = "{\n  \n}",
+    val documentEditor: DocumentEditorState = DocumentEditorState(),
     val queryModeAggregate: Boolean = false,
     val queryFilterJson: String = "{}",
     val querySortJson: String = "{}",

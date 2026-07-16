@@ -8,6 +8,9 @@ import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
+import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.ui.editor.DocValueType
+import com.chloemlla.clens.ui.editor.DocumentEditorMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.update
 class ClensViewModel(
     connectionStore: MongoConnectionStore,
     private val localStore: LocalAppStore,
+    private val draftStore: DocumentDraftStore,
     sessionManager: MongoSessionManager,
     repository: MongoAdminRepository,
 ) : ViewModel() {
@@ -27,6 +31,7 @@ class ClensViewModel(
         state = _state,
         connectionStore = connectionStore,
         localStore = localStore,
+        draftStore = draftStore,
         sessionManager = sessionManager,
         repository = repository,
         actions = actions,
@@ -160,6 +165,16 @@ class ClensViewModel(
     fun killOpConfirmed() = admin.killOpConfirmed()
     fun loadCollectionValidator() = browse.loadCollectionValidator()
     fun applyCollectionValidator() = browse.applyCollectionValidator()
+    fun setDocumentEditorMode(mode: DocumentEditorMode) = browse.setDocumentEditorMode(mode)
+    fun applyCodeToTree() = browse.applyCodeToTree()
+    fun toggleDocumentNode(pathKey: String) = browse.toggleDocumentNode(pathKey)
+    fun beginEditDocumentNode(pathKey: String) = browse.beginEditDocumentNode(pathKey)
+    fun dismissEditDocumentNode() = browse.dismissEditDocumentNode()
+    fun commitDocumentLeafEdit(pathKey: String, type: DocValueType, scalar: String?) =
+        browse.commitDocumentLeafEdit(pathKey, type, scalar)
+    fun startBlankDocument() = browse.startBlankDocument()
+    fun restoreDocumentDraft() = browse.restoreDraft()
+    fun discardDocumentDraft() = browse.discardDraft()
     fun refreshAuditLog() = advanced.refreshAuditLog()
     fun clearAuditLog() = advanced.clearAuditLog()
 
@@ -236,12 +251,13 @@ class ClensViewModel(
     class Factory(
         private val connectionStore: MongoConnectionStore,
         private val localStore: LocalAppStore,
+        private val draftStore: DocumentDraftStore,
         private val sessionManager: MongoSessionManager,
         private val repository: MongoAdminRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ClensViewModel(connectionStore, localStore, sessionManager, repository) as T
+            return ClensViewModel(connectionStore, localStore, draftStore, sessionManager, repository) as T
         }
     }
 }
