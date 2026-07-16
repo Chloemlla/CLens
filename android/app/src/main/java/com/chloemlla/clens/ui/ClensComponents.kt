@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.browse.DocumentCardStream
 
 @Composable
 internal fun ClensAppHeader(state: ClensUiState) {
@@ -624,6 +625,12 @@ internal fun ResultViewModeToggle(
             enabled = enabled,
             label = { Text("表格") },
         )
+        FilterChip(
+            selected = mode == ResultViewMode.Cards,
+            onClick = { onChange(ResultViewMode.Cards) },
+            enabled = enabled,
+            label = { Text("卡片") },
+        )
     }
 }
 
@@ -720,6 +727,15 @@ internal fun DocumentResultList(
                     }
                 }
             }
+        }
+        ResultViewMode.Cards -> {
+            DocumentCardStream(
+                documents = documents,
+                selectedJson = selectedJson,
+                titlePrefix = titlePrefix,
+                startIndex = startIndex,
+                onClick = { _, json -> onSelect(json) },
+            )
         }
     }
 }

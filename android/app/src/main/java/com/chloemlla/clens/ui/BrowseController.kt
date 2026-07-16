@@ -35,6 +35,7 @@ class BrowseController(
                 selectedCollectionStats = null,
                 collectionStatsError = null,
                 maintenanceResultJson = "",
+                selectedDocumentJson = "",
             )
         }
         if (value.isNotBlank() && state.value.isConnected) {
@@ -53,11 +54,20 @@ class BrowseController(
                 selectedCollectionStats = null,
                 collectionStatsError = null,
                 maintenanceResultJson = "",
+                selectedDocumentJson = "",
             )
         }
         if (value.isNotBlank() && state.value.isConnected) {
             refreshCollectionStats()
         }
+    }
+
+    /**
+     * Clear document selection while keeping database/collection path.
+     * Used by breadcrumb "Collection" chip.
+     */
+    fun clearSelectedDocument() {
+        startBlankDocument(keepMode = true)
     }
 
     fun updateText(field: ClensViewModel.Field, value: String) {

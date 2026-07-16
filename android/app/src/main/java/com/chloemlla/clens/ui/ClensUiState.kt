@@ -12,6 +12,7 @@ import com.chloemlla.clens.core.mongo.QueryHistoryEntry
 import com.chloemlla.clens.core.mongo.AuditLogEntry
 import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
+import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.ui.editor.DocumentEditorState
 
 enum class ResultViewMode {
@@ -32,10 +33,19 @@ enum class DestructiveAction {
     KillOp,
 }
 
+enum class DestructiveConfirmMode {
+    /** P0: user must type the exact target name. */
+    TypeName,
+    /** P1: user must long-press confirm for 3 seconds. */
+    LongPress,
+}
+
 data class PendingDestructiveAction(
     val action: DestructiveAction,
     val target: String = "",
     val message: String,
+    val confirmToken: String = target,
+    val confirmMode: DestructiveConfirmMode = DestructiveConfirmMode.TypeName,
 )
 
 enum class ClensTab(val label: String) {
@@ -155,6 +165,8 @@ data class ClensUiState(
     val verticalCatalogLists: Boolean = false,
     val databaseSearchQuery: String = "",
     val collectionSearchQuery: String = "",
+    val biometricEnabled: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.System,
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,
@@ -169,4 +181,3 @@ data class ClensUiState(
     val writesBlocked: Boolean
         get() = connectedReadOnly || isSelectedView
 }
-

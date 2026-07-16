@@ -20,6 +20,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.ui.editor.DocumentEditorPanel
+import com.chloemlla.clens.ui.browse.BrowseBreadcrumb
+import com.chloemlla.clens.ui.browse.CollectionStatsQuickPanel
+import com.chloemlla.clens.ui.browse.DocumentCardStream
+import com.chloemlla.clens.ui.browse.extractDocumentIdLabel
 
 @Composable
 internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -37,6 +41,24 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             InfoCard(title = "尚未连接", lines = listOf("先到「连接」页建立会话。"))
             return@PanelColumn
         }
+
+        BrowseBreadcrumb(
+            database = state.selectedDatabase,
+            collection = state.selectedCollection,
+            documentLabel = extractDocumentIdLabel(state.selectedDocumentJson),
+            enabled = !state.loading,
+            onClearToRoot = { viewModel.updateSelectedDatabase("") },
+            onClearToDatabase = {
+                if (state.selectedCollection.isNotBlank() || state.selectedDocumentJson.isNotBlank()) {
+                    viewModel.updateSelectedCollection("")
+                }
+            },
+            onClearToCollection = {
+                if (state.selectedDocumentJson.isNotBlank()) {
+                    viewModel.clearSelectedDocument()
+                }
+            },
+        )
 
         ActionRow {
             OutlinedButton(onClick = { viewModel.refreshDatabases() }, enabled = !state.loading) {
@@ -168,6 +190,9 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             state.collectionStatsError != null -> InfoCard(title = "集合统计不可用", lines = listOf(state.collectionStatsError ?: ""))
             state.selectedCollectionStats != null -> {
                 val stats = state.selectedCollectionStats
+                if (stats != null) {
+                    CollectionStatsQuickPanel(stats = stats)
+                }
                 InfoCard(
                     title = "集合统计",
                     lines = listOf(
@@ -277,14 +302,24 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             enabled = !state.loading,
             onChange = viewModel::setResultViewMode,
         )
-        DocumentResultList(
-            documents = state.documents,
-            mode = state.resultViewMode,
-            selectedJson = state.selectedDocumentJson,
-            titlePrefix = "文档",
-            startIndex = state.documentSkip + 1,
-            onSelect = viewModel::selectDocument,
-        )
+        if (state.resultViewMode == ResultViewMode.Cards) {
+            DocumentCardStream(
+                documents = state.documents,
+                selectedJson = state.selectedDocumentJson,
+                titlePrefix = "文档",
+                startIndex = state.documentSkip + 1,
+                onClick = { _, json -> viewModel.selectDocument(json) },
+            )
+        } else {
+            DocumentResultList(
+                documents = state.documents,
+                mode = state.resultViewMode,
+                selectedJson = state.selectedDocumentJson,
+                titlePrefix = "文档",
+                startIndex = state.documentSkip + 1,
+                onSelect = viewModel::selectDocument,
+            )
+        }
 
         ActionRow {
             OutlinedButton(

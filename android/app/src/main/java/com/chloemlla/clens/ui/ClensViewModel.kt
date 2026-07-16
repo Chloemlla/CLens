@@ -9,8 +9,11 @@ import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.SecurityPrefsStore
+import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.ui.editor.DocValueType
 import com.chloemlla.clens.ui.editor.DocumentEditorMode
+import com.chloemlla.clens.core.mongo.VisualFilterClause
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +23,7 @@ class ClensViewModel(
     connectionStore: MongoConnectionStore,
     private val localStore: LocalAppStore,
     private val draftStore: DocumentDraftStore,
+    private val securityPrefs: SecurityPrefsStore,
     sessionManager: MongoSessionManager,
     repository: MongoAdminRepository,
 ) : ViewModel() {
@@ -41,10 +45,17 @@ class ClensViewModel(
     private val query = QueryController(ctx)
     private val admin = AdminController(ctx)
     private val advanced = AdvancedController(ctx)
+    private val sessionHealth = SessionHealthController(ctx)
 
     init {
         ctx.refreshProfiles(status = "连接配置已加载")
         ctx.refreshLocalLists()
+        _state.update {
+            it.copy(
+                biometricEnabled = securityPrefs.isBiometricEnabled(),
+                themeMode = securityPrefs.getThemeMode(),
+            )
+        }
     }
 
     fun selectTab(tab: ClensTab) {
@@ -76,11 +87,13 @@ class ClensViewModel(
     }
     fun disconnect() {
         advanced.stopChangeStream()
+        admin.stopOpsCounterSampling(keepHistory = false)
         connections.disconnect()
     }
 
     fun updateSelectedDatabase(value: String) = browse.updateSelectedDatabase(value)
     fun updateSelectedCollection(value: String) = browse.updateSelectedCollection(value)
+    fun clearSelectedDocument() = browse.clearSelectedDocument()
     fun updateDocumentLimit(value: String) = browse.updateDocumentLimit(value)
     fun refreshDatabases(silent: Boolean = false) = browse.refreshDatabases(silent)
     fun createDatabase() = browse.createDatabase()
@@ -114,6 +127,15 @@ class ClensViewModel(
     fun setQueryModeAggregate(enabled: Boolean) = query.setQueryModeAggregate(enabled)
     fun runQuery(withExplain: Boolean = false) = query.runQuery(withExplain)
     fun explainAggregate() = query.explainAggregate()
+    fun setQueryVisualMode(enabled: Boolean) = query.setQueryVisualMode(enabled)
+    fun updateVisualClause(index: Int, clause: VisualFilterClause) = query.updateVisualClause(index, clause)
+    fun addVisualClause() = query.addVisualClause()
+    fun removeVisualClause(index: Int) = query.removeVisualClause(index)
+    fun updateFavoriteNameInput(value: String) = query.updateFavoriteNameInput(value)
+    fun saveCurrentQueryFavorite() = query.saveCurrentQueryFavorite()
+    fun restoreQueryFavorite(id: String) = query.restoreQueryFavorite(id)
+    fun deleteQueryFavorite(id: String) = query.deleteQueryFavorite(id)
+    fun suggestedQueryFields(): List<String> = query.suggestedQueryFields()
 
     fun setVerticalCatalogListsEnabled(enabled: Boolean) {
         localStore.setVerticalCatalogListsEnabled(enabled)
@@ -121,6 +143,31 @@ class ClensViewModel(
             it.copy(
                 verticalCatalogLists = enabled,
                 status = if (enabled) "已切换为竖排列表" else "已切换为横向标签",
+            )
+        }
+    }
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        securityPrefs.setBiometricEnabled(enabled)
+        securityPrefs.setBiometricPromptSeen(true)
+        _state.update {
+            it.copy(
+                biometricEnabled = enabled,
+                status = if (enabled) "已启用生物识别锁定" else "已关闭生物识别锁定",
+            )
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        securityPrefs.setThemeMode(mode)
+        _state.update {
+            it.copy(
+                themeMode = mode,
+                status = when (mode) {
+                    ThemeMode.System -> "主题：跟随系统"
+                    ThemeMode.Light -> "主题：浅色"
+                    ThemeMode.Dark -> "主题：深色"
+                },
             )
         }
     }
@@ -163,6 +210,7 @@ class ClensViewModel(
     fun refreshCurrentOps() = admin.refreshCurrentOps()
     fun requestKillOp(opId: String) = admin.requestKillOp(opId)
     fun killOpConfirmed() = admin.killOpConfirmed()
+    fun setOpsCounterVisible(visible: Boolean) = admin.setOpsCounterVisible(visible, viewModelScope)
     fun loadCollectionValidator() = browse.loadCollectionValidator()
     fun applyCollectionValidator() = browse.applyCollectionValidator()
     fun setDocumentEditorMode(mode: DocumentEditorMode) = browse.setDocumentEditorMode(mode)
@@ -178,8 +226,14 @@ class ClensViewModel(
     fun refreshAuditLog() = advanced.refreshAuditLog()
     fun clearAuditLog() = advanced.clearAuditLog()
 
+
+    fun onAppForeground() = sessionHealth.onAppForeground(viewModelScope)
+    fun dismissDisconnectNotice() = sessionHealth.dismissDisconnectNotice()
+    fun reconnectManually() = sessionHealth.reconnectManually()
+
     override fun onCleared() {
         advanced.onCleared()
+        admin.stopOpsCounterSampling(keepHistory = false)
         super.onCleared()
     }
 
@@ -193,14 +247,16 @@ class ClensViewModel(
 
     fun confirmDestructive() {
         val pending = _state.value.pendingDestructive ?: return
+        val expected = pending.confirmToken.ifBlank { pending.target }
+        if (
+            pending.confirmMode == DestructiveConfirmMode.TypeName &&
+            _state.value.destructiveConfirmInput != expected
+        ) {
+            _state.update { it.copy(error = "确认名称不匹配，已取消操作。") }
+            return
+        }
         when (pending.action) {
-            DestructiveAction.DropDatabase -> {
-                if (_state.value.destructiveConfirmInput != pending.target) {
-                    _state.update { it.copy(error = "数据库名不匹配，已取消删除。") }
-                    return
-                }
-                browse.dropDatabaseConfirmed()
-            }
+            DestructiveAction.DropDatabase -> browse.dropDatabaseConfirmed()
             DestructiveAction.DropCollection -> browse.dropCollectionConfirmed()
             DestructiveAction.DeleteMany -> browse.deleteManyConfirmed()
             DestructiveAction.DropIndex -> admin.dropIndexConfirmed()
@@ -252,12 +308,14 @@ class ClensViewModel(
         private val connectionStore: MongoConnectionStore,
         private val localStore: LocalAppStore,
         private val draftStore: DocumentDraftStore,
+        private val securityPrefs: SecurityPrefsStore,
         private val sessionManager: MongoSessionManager,
         private val repository: MongoAdminRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ClensViewModel(connectionStore, localStore, draftStore, sessionManager, repository) as T
+            return ClensViewModel(connectionStore, localStore, draftStore, securityPrefs, sessionManager, repository) as T
         }
     }
 }
+
