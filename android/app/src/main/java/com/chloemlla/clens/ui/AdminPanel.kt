@@ -122,9 +122,27 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "服务器",
             subtitle = "serverStatus / usersInfo / currentOp 权限不足时会降级提示。",
         )
+        ActionRow {
+            OutlinedButton(
+                onClick = { viewModel.setOpsHistoryMode(false) },
+                enabled = !state.loading,
+            ) { Text(if (!state.opsCounterHistoryMode) "会话监控中" else "看会话") }
+            OutlinedButton(
+                onClick = { viewModel.setOpsHistoryMode(true) },
+                enabled = !state.loading && state.connectedProfileId != null,
+            ) { Text(if (state.opsCounterHistoryMode) "历史窗口中" else "看历史") }
+            OutlinedButton(
+                onClick = viewModel::refreshOpsHistory,
+                enabled = !state.loading && state.opsCounterHistoryMode,
+            ) { Text("刷新历史") }
+            OutlinedButton(
+                onClick = viewModel::clearOpsHistory,
+                enabled = !state.loading && state.opsCounterHistoryMode,
+            ) { Text("清空历史") }
+        }
         OpsCounterChartPanel(
-            sampleState = state.opsCounterState,
-            sampling = state.opsCounterSampling,
+            sampleState = if (state.opsCounterHistoryMode) state.opsCounterHistoryState else state.opsCounterState,
+            sampling = if (state.opsCounterHistoryMode) false else state.opsCounterSampling,
             error = state.opsCounterError,
             onVisibleChanged = viewModel::setOpsCounterVisible,
         )
@@ -266,4 +284,3 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
     }
 }
-

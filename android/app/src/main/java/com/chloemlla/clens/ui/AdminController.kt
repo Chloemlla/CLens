@@ -133,6 +133,46 @@ class AdminController(
     /**
      * Start/stop the ~5s Ops Counter sampling loop based on Admin panel visibility.
      */
+
+    fun setOpsHistoryMode(enabled: Boolean) {
+        state.update { it.copy(opsCounterHistoryMode = enabled) }
+        if (enabled) {
+            refreshOpsHistory()
+        }
+    }
+
+    fun refreshOpsHistory(silent: Boolean = false) {
+        val connectionId = state.value.connectedProfileId
+        if (connectionId.isNullOrBlank()) {
+            state.update {
+                it.copy(
+                    opsCounterHistoryState = null,
+                    opsCounterError = if (silent) it.opsCounterError else "请先连接后再查看历史",
+                )
+            }
+            return
+        }
+        val history = runCatching { ctx.opsArchiveStore.load(connectionId) }.getOrNull()
+        state.update {
+            it.copy(
+                opsCounterHistoryState = history,
+                status = if (!silent && history != null) "已加载 Ops 历史 " + history.points.size + " 点" else it.status,
+                opsCounterError = if (history == null && !silent) "暂无跨会话 Ops 归档" else it.opsCounterError,
+            )
+        }
+    }
+
+    fun clearOpsHistory() {
+        val connectionId = state.value.connectedProfileId ?: return
+        runCatching { ctx.opsArchiveStore.clear(connectionId) }
+        state.update {
+            it.copy(
+                opsCounterHistoryState = null,
+                status = "已清空当前连接 Ops 历史",
+            )
+        }
+    }
+
     fun setOpsCounterVisible(visible: Boolean, scope: CoroutineScope) {
         samplingVisible = visible
         if (!visible) {
@@ -175,12 +215,19 @@ class AdminController(
                 snapshotResult.onSuccess { snapshot ->
                     val sample = sampler.onSnapshot(snapshot)
                     if (sample != null) {
+                        val connectionId = state.value.connectedProfileId
+                        if (!connectionId.isNullOrBlank()) {
+                            runCatching { ctx.opsArchiveStore.append(connectionId, sample.current) }
+                        }
                         state.update {
                             it.copy(
                                 opsCounterState = sample,
                                 opsCounterError = null,
                                 opsCounterSampling = true,
                             )
+                        }
+                        if (state.value.opsCounterHistoryMode) {
+                            refreshOpsHistory(silent = true)
                         }
                     } else {
                         // Baseline only; preserve previous sample state if any.

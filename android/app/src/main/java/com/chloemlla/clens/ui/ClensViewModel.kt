@@ -9,6 +9,7 @@ import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.OpsCounterArchiveStore
 import com.chloemlla.clens.core.storage.OfflineSnapshotStore
 import com.chloemlla.clens.core.storage.StagingQueueStore
 import com.chloemlla.clens.core.export.DocumentExportFormat
@@ -27,6 +28,7 @@ class ClensViewModel(
     connectionStore: MongoConnectionStore,
     private val localStore: LocalAppStore,
     private val draftStore: DocumentDraftStore,
+    private val opsArchiveStore: OpsCounterArchiveStore,
     private val snapshotStore: OfflineSnapshotStore,
     private val stagingStore: StagingQueueStore,
     private val securityPrefs: SecurityPrefsStore,
@@ -43,6 +45,7 @@ class ClensViewModel(
         connectionStore = connectionStore,
         localStore = localStore,
         draftStore = draftStore,
+        opsArchiveStore = opsArchiveStore,
         snapshotStore = snapshotStore,
         stagingStore = stagingStore,
         sessionManager = sessionManager,
@@ -257,6 +260,9 @@ class ClensViewModel(
     fun requestKillOp(opId: String) = admin.requestKillOp(opId)
     fun killOpConfirmed() = admin.killOpConfirmed()
     fun setOpsCounterVisible(visible: Boolean) = admin.setOpsCounterVisible(visible, viewModelScope)
+    fun setOpsHistoryMode(enabled: Boolean) = admin.setOpsHistoryMode(enabled)
+    fun refreshOpsHistory() = admin.refreshOpsHistory()
+    fun clearOpsHistory() = admin.clearOpsHistory()
     fun loadCollectionValidator() = browse.loadCollectionValidator()
     fun applyCollectionValidator() = browse.applyCollectionValidator()
     fun setDocumentEditorMode(mode: DocumentEditorMode) = browse.setDocumentEditorMode(mode)
@@ -394,6 +400,7 @@ class ClensViewModel(
         private val connectionStore: MongoConnectionStore,
         private val localStore: LocalAppStore,
         private val draftStore: DocumentDraftStore,
+        private val opsArchiveStore: OpsCounterArchiveStore,
         private val snapshotStore: OfflineSnapshotStore,
         private val stagingStore: StagingQueueStore,
         private val securityPrefs: SecurityPrefsStore,
@@ -407,6 +414,7 @@ class ClensViewModel(
                 connectionStore,
                 localStore,
                 draftStore,
+                opsArchiveStore,
                 snapshotStore,
                 stagingStore,
                 securityPrefs,

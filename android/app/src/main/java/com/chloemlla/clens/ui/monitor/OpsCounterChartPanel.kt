@@ -95,7 +95,7 @@ fun OpsCounterChartPanel(
                     )
                 }
                 Text(
-                    text = "会话内监控",
+                    text = if (sampling) "会话监控" else "历史/暂停",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )

@@ -12,6 +12,7 @@ import com.chloemlla.clens.core.mongo.SessionHealthMonitor
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.OpsCounterArchiveStore
 import com.chloemlla.clens.core.storage.OfflineSnapshotStore
 import com.chloemlla.clens.core.storage.StagingQueueStore
 import java.util.UUID
@@ -26,6 +27,7 @@ class ClensSessionContext(
     val connectionStore: MongoConnectionStore,
     val localStore: LocalAppStore,
     val draftStore: DocumentDraftStore,
+    val opsArchiveStore: OpsCounterArchiveStore,
     val snapshotStore: OfflineSnapshotStore,
     val stagingStore: StagingQueueStore,
     val sessionManager: MongoSessionManager,

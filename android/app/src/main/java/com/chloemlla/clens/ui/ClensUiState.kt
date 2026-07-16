@@ -236,6 +236,8 @@ data class ClensUiState(
     val opsCounterState: OpsCounterSampleState? = null,
     val opsCounterSampling: Boolean = false,
     val opsCounterError: String? = null,
+    val opsCounterHistoryMode: Boolean = false,
+    val opsCounterHistoryState: OpsCounterSampleState? = null,
     val collectionValidator: CollectionValidatorInfo? = null,
     val collectionValidatorError: String? = null,
     val validatorJsonInput: String = "{}",
