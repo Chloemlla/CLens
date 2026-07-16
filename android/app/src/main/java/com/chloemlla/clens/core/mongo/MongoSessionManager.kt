@@ -73,6 +73,39 @@ class MongoSessionManager {
         profileRef.set(null)
     }
 
+    /**
+     * Probe the active session with admin.ping without replacing the client.
+     * Throws when no session exists or the ping fails.
+     */
+    suspend fun healthPing(): ConnectionTestResult = withContext(Dispatchers.IO) {
+        val client = clientRef.get()
+            ?: throw MongoAdminException.Validation("尚未连接 MongoDB。")
+        try {
+            val started = System.nanoTime()
+            val ping = client.getDatabase("admin").runCommand(Document("ping", 1))
+            val latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+            val ok = isCommandOk(ping)
+            ConnectionTestResult(
+                ok = ok,
+                latencyMillis = latency,
+                serverVersion = null,
+                message = if (ok) "会话正常 · ${latency}ms" else "会话探测失败",
+            )
+        } catch (error: Throwable) {
+            throw wrapConnectionFailure("会话探测失败", error)
+        }
+    }
+
+    /**
+     * Rebuild the client from [profileRef] and swap safely.
+     * Returns the connect result or throws when no profile is retained.
+     */
+    suspend fun reconnectActive(): ConnectionTestResult {
+        val profile = profileRef.get()
+            ?: throw MongoAdminException.Validation("没有可重连的活动连接配置。")
+        return connect(profile)
+    }
+
     private fun swapClient(client: MongoClient, profile: MongoConnectionProfile) {
         clientRef.getAndSet(client)?.let { previous -> runCatching { previous.close() } }
         profileRef.set(profile)

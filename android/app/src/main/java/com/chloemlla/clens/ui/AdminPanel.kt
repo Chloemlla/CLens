@@ -2,6 +2,7 @@ package com.chloemlla.clens.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -20,11 +22,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.monitor.OpsCounterChartPanel
+
+private const val SLOW_OP_SECS_THRESHOLD = 5L
 
 @Composable
 internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -108,6 +114,12 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "服务器",
             subtitle = "serverStatus / usersInfo / currentOp 权限不足时会降级提示。",
         )
+        OpsCounterChartPanel(
+            sampleState = state.opsCounterState,
+            sampling = state.opsCounterSampling,
+            error = state.opsCounterError,
+            onVisibleChanged = viewModel::setOpsCounterVisible,
+        )
         ActionRow {
             OutlinedButton(onClick = viewModel::refreshServerOverview, enabled = !state.loading) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新", Modifier.size(16.dp))
@@ -140,19 +152,64 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError ?: ""))
             state.currentOps.isNotEmpty() -> {
                 state.currentOps.forEach { op ->
-                    InfoCard(
-                        title = "opid " + op.opId,
-                        lines = listOf(
-                            "op: " + op.op.ifBlank { "-" },
-                            "ns: " + op.ns.ifBlank { "-" },
-                            "secsRunning: " + (op.secsRunning?.toString() ?: "-"),
-                            "client: " + op.client.ifBlank { "-" },
+                    val secs = op.secsRunning
+                    val slow = secs != null && secs >= SLOW_OP_SECS_THRESHOLD
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (slow) {
+                                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            },
                         ),
-                    )
-                    OutlinedButton(
-                        onClick = { viewModel.requestKillOp(op.opId) },
-                        enabled = !state.loading && !state.connectedReadOnly,
-                    ) { Text("killOp") }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "opid " + op.opId,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                if (slow) {
+                                    Text(
+                                        text = "慢操作",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            Text("op: " + op.op.ifBlank { "-" }, fontFamily = FontFamily.Monospace)
+                            Text("ns: " + op.ns.ifBlank { "-" }, fontFamily = FontFamily.Monospace)
+                            Text(
+                                text = "secsRunning: " + (secs?.toString() ?: "-"),
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = if (slow) FontWeight.Bold else FontWeight.Normal,
+                                color = if (slow) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                            Text("client: " + op.client.ifBlank { "-" }, fontFamily = FontFamily.Monospace)
+                            Button(
+                                onClick = { viewModel.requestKillOp(op.opId) },
+                                enabled = !state.loading && !state.connectedReadOnly,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError,
+                                ),
+                            ) { Text("Kill") }
+                        }
+                    }
                 }
             }
             state.currentOpsJson.isNotBlank() -> JsonField("currentOp", state.currentOpsJson, enabled = false, minLines = 8) {}

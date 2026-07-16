@@ -26,6 +26,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +38,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
+import com.chloemlla.clens.ui.connection.ConnectionImportSection
 
 @Composable
 internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -181,6 +186,7 @@ private fun ConnectionCard(
 @Composable
 private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
     val form = state.connectionForm
+    var importMessage by remember { mutableStateOf<String?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -191,6 +197,31 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                 text = if (form.id == null) "新建连接" else "编辑连接",
                 subtitle = "URI 与表单二选一，URI 优先。",
             )
+            ConnectionImportSection(
+                enabled = !state.loading,
+                onUriImported = { uri, name ->
+                    viewModel.updateConnectionForm { current ->
+                        current.copy(
+                            useUri = true,
+                            uri = uri,
+                            name = when {
+                                !name.isNullOrBlank() && current.name.isBlank() -> name
+                                else -> current.name
+                            },
+                        )
+                    }
+                },
+                onImportMessage = { message ->
+                    importMessage = message
+                },
+            )
+            importMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             OutlinedTextField(
                 value = form.name,
                 onValueChange = { value -> viewModel.updateConnectionForm { it.copy(name = value) } },

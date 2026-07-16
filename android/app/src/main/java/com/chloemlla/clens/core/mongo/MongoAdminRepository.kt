@@ -332,6 +332,33 @@ class MongoAdminRepository(
         )
     }
 
+    /**
+     * Lightweight serverStatus extract for in-session Ops Counter sampling.
+     * Prefers opcounters + connections; fails closed with Validation when unavailable.
+     */
+    suspend fun fetchOpCounters(): OpCounterSnapshot = withContext(Dispatchers.IO) {
+        val status = runCatching {
+            sessionManager.requireClient()
+                .getDatabase("admin")
+                .runCommand(Document("serverStatus", 1))
+        }.getOrElse { error ->
+            throw MongoAdminException.Operation("serverStatus 不可用: ${error.message}", error)
+        }
+        val counters = status.get("opcounters") as? Document
+            ?: throw MongoAdminException.Operation("serverStatus.opcounters 不可用")
+        val connections = status.get("connections") as? Document
+        OpCounterSnapshot(
+            timestampMillis = System.currentTimeMillis(),
+            insert = counters.numberLong("insert") ?: 0L,
+            query = counters.numberLong("query") ?: 0L,
+            update = counters.numberLong("update") ?: 0L,
+            delete = counters.numberLong("delete") ?: 0L,
+            connectionsCurrent = connections?.numberInt("current"),
+            connectionsActive = connections?.numberInt("active"),
+            connectionsAvailable = connections?.numberInt("available"),
+        )
+    }
+
     suspend fun listUsers(authDatabase: String = "admin"): List<String> = withContext(Dispatchers.IO) {
         val result = sessionManager.requireClient()
             .getDatabase(requireName(authDatabase, "认证库"))

@@ -125,6 +125,52 @@ data class CollectionValidatorInfo(
     val rawJson: String = "{}",
 )
 
+data class OpCounterSnapshot(
+    val timestampMillis: Long = System.currentTimeMillis(),
+    val insert: Long = 0L,
+    val query: Long = 0L,
+    val update: Long = 0L,
+    val delete: Long = 0L,
+    val connectionsCurrent: Int? = null,
+    val connectionsActive: Int? = null,
+    val connectionsAvailable: Int? = null,
+)
+
+data class OpCounterRates(
+    val insertQps: Double = 0.0,
+    val queryQps: Double = 0.0,
+    val updateQps: Double = 0.0,
+    val deleteQps: Double = 0.0,
+    val elapsedMillis: Long = 0L,
+)
+
+data class OpsCounterPoint(
+    val timestampMillis: Long,
+    val insertQps: Double,
+    val queryQps: Double,
+    val updateQps: Double,
+    val deleteQps: Double,
+    val connectionsCurrent: Int? = null,
+    val connectionsActive: Int? = null,
+    val connectionsAvailable: Int? = null,
+)
+
+data class OpsCounterPeak(
+    val insertQps: Double = 0.0,
+    val queryQps: Double = 0.0,
+    val updateQps: Double = 0.0,
+    val deleteQps: Double = 0.0,
+)
+
+data class OpsCounterSampleState(
+    val points: List<OpsCounterPoint> = emptyList(),
+    val current: OpsCounterPoint? = null,
+    val peak: OpsCounterPeak = OpsCounterPeak(),
+    val connectionsCurrent: Int? = null,
+    val connectionsActive: Int? = null,
+    val connectionsAvailable: Int? = null,
+)
+
 data class QueryHistoryEntry(
     val id: String,
     val modeAggregate: Boolean,
@@ -140,6 +186,25 @@ data class QueryHistoryEntry(
         get() {
             val mode = if (modeAggregate) "agg" else "find"
             return mode + " " + database + "." + collection
+        }
+}
+
+data class QueryFavoriteEntry(
+    val id: String,
+    val name: String,
+    val database: String = "",
+    val collection: String = "",
+    val filterJson: String = "{}",
+    val sortJson: String = "{}",
+    val projectionJson: String = "{}",
+    val modeAggregate: Boolean = false,
+    val pipelineJson: String = "[]",
+    val createdAtMillis: Long = System.currentTimeMillis(),
+) {
+    val title: String
+        get() {
+            val target = listOf(database, collection).filter { it.isNotBlank() }.joinToString(".")
+            return if (target.isBlank()) name else "$name · $target"
         }
 }
 

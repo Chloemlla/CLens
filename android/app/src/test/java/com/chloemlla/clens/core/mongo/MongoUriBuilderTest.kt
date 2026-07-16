@@ -73,4 +73,26 @@ class MongoUriBuilderTest {
             ),
         )
     }
+
+    @Test
+    fun parseUriToFormFields_extractsHostCredentialsAndFlags() {
+        val parsed = MongoUriBuilder.parseUriToFormFields(
+            "mongodb://alice:secret@10.0.0.8:27017/app?authSource=admin&tls=true&directConnection=true&replicaSet=rs0",
+        )
+        requireNotNull(parsed)
+        assertEquals("10.0.0.8", parsed.host)
+        assertEquals(27017, parsed.port)
+        assertEquals("alice", parsed.username)
+        assertEquals("secret", parsed.password)
+        assertEquals("admin", parsed.authDatabase)
+        assertEquals("app", parsed.defaultDatabase)
+        assertEquals("rs0", parsed.replicaSet)
+        assertTrue(parsed.tls)
+        assertTrue(parsed.directConnection)
+    }
+
+    @Test
+    fun parseUriToFormFields_returnsNullForNonMongoScheme() {
+        assertEquals(null, MongoUriBuilder.parseUriToFormFields("http://example.com"))
+    }
 }

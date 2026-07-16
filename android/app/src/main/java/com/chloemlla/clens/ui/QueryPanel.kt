@@ -9,6 +9,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.OutlinedTextField
+import com.chloemlla.clens.ui.query.VisualQueryBuilder
 
 @Composable
 internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -33,8 +35,26 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 viewModel.updateText(ClensViewModel.Field.QueryPipeline, it)
             }
         } else {
-            JsonField("Filter", state.queryFilterJson, !state.loading) {
-                viewModel.updateText(ClensViewModel.Field.QueryFilter, it)
+            FlagRow("可视化构建", state.queryVisualMode, !state.loading, viewModel::setQueryVisualMode)
+            if (state.queryVisualMode) {
+                VisualQueryBuilder(
+                    clauses = state.queryVisualClauses,
+                    suggestedFields = viewModel.suggestedQueryFields(),
+                    enabled = !state.loading,
+                    onClauseChange = viewModel::updateVisualClause,
+                    onAddClause = viewModel::addVisualClause,
+                    onRemoveClause = viewModel::removeVisualClause,
+                )
+                Text(
+                    text = "预览 Filter JSON",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                JsonField("Filter 预览", state.queryFilterJson, enabled = false, minLines = 3) {}
+            } else {
+                JsonField("Filter", state.queryFilterJson, !state.loading) {
+                    viewModel.updateText(ClensViewModel.Field.QueryFilter, it)
+                }
             }
             JsonField("Sort", state.querySortJson, !state.loading) {
                 viewModel.updateText(ClensViewModel.Field.QuerySort, it)
@@ -61,12 +81,46 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        SectionTitle(text = "查询历史", subtitle = "最近 30 条本地保存。")
+        SectionTitle(text = "命名收藏", subtitle = "保存当前 filter/sort/projection，一键恢复。")
+        OutlinedTextField(
+            value = state.queryFavoriteNameInput,
+            onValueChange = viewModel::updateFavoriteNameInput,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.loading,
+            singleLine = true,
+            label = { Text("收藏名称") },
+            placeholder = { Text("例如 活跃用户") },
+        )
+        ActionRow {
+            Button(
+                onClick = viewModel::saveCurrentQueryFavorite,
+                enabled = !state.loading && state.queryFavoriteNameInput.isNotBlank(),
+            ) { Text("保存收藏") }
+            OutlinedButton(onClick = viewModel::refreshQueryHistory, enabled = !state.loading) { Text("刷新列表") }
+        }
+        if (state.queryFavorites.isEmpty()) {
+            InfoCard(title = "暂无收藏", lines = listOf("填写名称后可保存当前查询条件。"))
+        } else {
+            state.queryFavorites.forEach { item ->
+                OutlinedButton(
+                    onClick = { viewModel.restoreQueryFavorite(item.id) },
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(item.title) }
+                OutlinedButton(
+                    onClick = { viewModel.deleteQueryFavorite(item.id) },
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("删除 · " + item.name) }
+            }
+        }
+
+        SectionTitle(text = "查询历史", subtitle = "最近 20 条本地保存，点按即可恢复。")
         OutlinedButton(onClick = viewModel::refreshQueryHistory, enabled = !state.loading) { Text("刷新历史") }
         if (state.queryHistory.isEmpty()) {
             InfoCard(title = "暂无历史", lines = listOf("执行 find/aggregate 后会自动记录。"))
         } else {
-            state.queryHistory.take(10).forEach { item ->
+            state.queryHistory.take(20).forEach { item ->
                 OutlinedButton(
                     onClick = { viewModel.restoreQueryHistory(item.id) },
                     enabled = !state.loading,

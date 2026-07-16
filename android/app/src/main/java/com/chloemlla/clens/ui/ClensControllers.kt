@@ -4,11 +4,15 @@ import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
+import com.chloemlla.clens.core.mongo.SessionHealthCallbacks
+import com.chloemlla.clens.core.mongo.SessionHealthMonitor
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
 
 class ClensSessionContext(
@@ -24,6 +28,7 @@ class ClensSessionContext(
         state.update {
             it.copy(
                 queryHistory = localStore.listQueryHistory(),
+                queryFavorites = localStore.listQueryFavorites(),
                 auditLog = localStore.listAuditLog(),
                 verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
             )
@@ -222,6 +227,9 @@ class ConnectionController(
                     selectedTab = ClensTab.Browse,
                     cleartextWarning = CleartextRisk.forProfile(target),
                     connectedReadOnly = target.readOnly,
+                    connectionHealthy = true,
+                    reconnecting = false,
+                    disconnectNotice = null,
                 )
             }
             onConnected()
@@ -243,10 +251,158 @@ class ConnectionController(
                     usersError = null,
                     currentOpsJson = "",
                     currentOpsError = null,
+                    opsCounterState = null,
+                    opsCounterSampling = false,
+                    opsCounterError = null,
                     status = "已断开连接",
                     error = null,
                     cleartextWarning = null,
                     connectedReadOnly = false,
+                    connectionHealthy = true,
+                    reconnecting = false,
+                    disconnectNotice = null,
+                )
+            }
+        }
+    }
+}
+
+class SessionHealthController(
+    private val ctx: ClensSessionContext,
+) {
+    private val state get() = ctx.state
+    private val sessionManager get() = ctx.sessionManager
+    private val monitor = SessionHealthMonitor(sessionManager)
+
+    private val callbacks = object : SessionHealthCallbacks {
+        override fun onHealthOk() {
+            state.update {
+                it.copy(
+                    connectionHealthy = true,
+                    reconnecting = false,
+                    disconnectNotice = null,
+                )
+            }
+        }
+
+        override fun onHealthFailed(message: String) {
+            state.update {
+                it.copy(
+                    connectionHealthy = false,
+                    disconnectNotice = "连接似乎已中断：$message",
+                )
+            }
+        }
+
+        override fun onReconnectStarted(attempt: Int, maxAttempts: Int) {
+            state.update {
+                it.copy(
+                    reconnecting = true,
+                    connectionHealthy = false,
+                    disconnectNotice = "正在自动重连（$attempt/$maxAttempts）…",
+                )
+            }
+        }
+
+        override fun onReconnectSucceeded(message: String) {
+            state.update {
+                it.copy(
+                    connectionHealthy = true,
+                    reconnecting = false,
+                    disconnectNotice = null,
+                    status = message.ifBlank { "已重新连接" },
+                    error = null,
+                    connectedProfileId = sessionManager.activeProfile?.id ?: it.connectedProfileId,
+                    connectedReadOnly = sessionManager.activeProfile?.readOnly ?: it.connectedReadOnly,
+                )
+            }
+        }
+
+        override fun onReconnectFailed(message: String) {
+            state.update {
+                it.copy(
+                    connectionHealthy = false,
+                    reconnecting = true,
+                    disconnectNotice = "重连未成功：$message",
+                )
+            }
+        }
+
+        override fun onReconnectExhausted(message: String) {
+            state.update {
+                it.copy(
+                    connectionHealthy = false,
+                    reconnecting = false,
+                    disconnectNotice = message,
+                    // Keep connectedProfileId so the user can still tap reconnect against the last profile.
+                )
+            }
+        }
+    }
+
+    /**
+     * Foreground / resume entry: ping active session and reconnect gently on failure.
+     * Runs outside the main action mutex so resume does not flash global loading.
+     * Banner state carries the mild notice (no error toast spam).
+     */
+    fun onAppForeground(scope: CoroutineScope) {
+        val uiConnected = state.value.isConnected
+        val hasSession = sessionManager.isConnected || sessionManager.activeProfile != null
+        if (!uiConnected && !hasSession) return
+        if (state.value.reconnecting) return
+        scope.launch {
+            runCatching {
+                monitor.ensureHealthyOrReconnect(callbacks)
+            }.onFailure { error ->
+                val message = error.message?.takeIf { it.isNotBlank() } ?: "会话检查失败"
+                state.update {
+                    it.copy(
+                        connectionHealthy = false,
+                        reconnecting = false,
+                        disconnectNotice = "连接似乎已中断：$message",
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissDisconnectNotice() {
+        state.update { it.copy(disconnectNotice = null) }
+    }
+
+    fun reconnectManually() {
+        val profile = sessionManager.activeProfile
+            ?: state.value.connectedProfile
+            ?: state.value.activeProfile
+        if (profile == null) {
+            state.update {
+                it.copy(
+                    disconnectNotice = "没有可重连的连接配置",
+                    reconnecting = false,
+                    connectionHealthy = false,
+                )
+            }
+            return
+        }
+        ctx.actions.run("手动重连", silent = true) {
+            state.update {
+                it.copy(
+                    reconnecting = true,
+                    connectionHealthy = false,
+                    disconnectNotice = "正在重新连接…",
+                )
+            }
+            // Ensure profileRef is populated even if client already dropped.
+            val result = sessionManager.connect(profile)
+            state.update {
+                it.copy(
+                    connectedProfileId = profile.id,
+                    connectionHealthy = true,
+                    reconnecting = false,
+                    disconnectNotice = null,
+                    status = result.message.ifBlank { "已重新连接" },
+                    error = null,
+                    connectedReadOnly = profile.readOnly,
                 )
             }
         }

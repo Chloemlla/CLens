@@ -93,7 +93,9 @@ class AdvancedController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DropGridFsFile,
                     target = fileId,
-                    message = "将删除 GridFS 文件 id=`" + fileId + "`。",
+                    message = "将删除 GridFS 文件 id=`" + fileId + "`。请长按 3 秒确认。",
+                    confirmToken = fileId,
+                    confirmMode = DestructiveConfirmMode.LongPress,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -208,7 +210,9 @@ class AdvancedController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DropUser,
                     target = user,
-                    message = "将删除用户 `" + user + "`。",
+                    message = "将删除用户 `" + user + "`。请输入用户名确认。",
+                    confirmToken = user,
+                    confirmMode = DestructiveConfirmMode.TypeName,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -249,7 +253,9 @@ class AdvancedController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DropRole,
                     target = role,
-                    message = "将删除角色 `" + role + "`。",
+                    message = "将删除角色 `" + role + "`。请输入角色名确认。",
+                    confirmToken = role,
+                    confirmMode = DestructiveConfirmMode.TypeName,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -275,7 +281,9 @@ class AdvancedController(
                     pendingDestructive = PendingDestructiveAction(
                         action = DestructiveAction.ImportDropCollection,
                         target = it.selectedCollection,
-                        message = "导入前将删除并重建集合 `" + it.selectedDatabase + "." + it.selectedCollection + "`。",
+                        message = "导入前将删除并重建集合 `" + it.selectedDatabase + "." + it.selectedCollection + "`。请输入集合名确认。",
+                        confirmToken = it.selectedCollection,
+                        confirmMode = DestructiveConfirmMode.TypeName,
                     ),
                     destructiveConfirmInput = "",
                 )
