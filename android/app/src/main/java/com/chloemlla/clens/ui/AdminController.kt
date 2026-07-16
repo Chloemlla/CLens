@@ -216,8 +216,9 @@ class AdminController(
                     val sample = sampler.onSnapshot(snapshot)
                     if (sample != null) {
                         val connectionId = state.value.connectedProfileId
-                        if (!connectionId.isNullOrBlank()) {
-                            runCatching { ctx.opsArchiveStore.append(connectionId, sample.current) }
+                        val currentPoint = sample.current
+                        if (!connectionId.isNullOrBlank() && currentPoint != null) {
+                            runCatching { ctx.opsArchiveStore.append(connectionId, currentPoint) }
                         }
                         state.update {
                             it.copy(

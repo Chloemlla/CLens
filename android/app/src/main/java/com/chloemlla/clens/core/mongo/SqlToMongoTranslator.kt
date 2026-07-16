@@ -597,6 +597,59 @@ object SqlToMongoTranslator {
         return parts.map { it.trim() }.filter { it.isNotEmpty() }
     }
 
+
+    /**
+     * True when [andIndex] points at the AND keyword of a BETWEEN ... AND ... pair
+     * at top-level depth (no intervening top-level AND/OR after the latest BETWEEN).
+     */
+    private fun isBetweenAndConnector(text: String, andIndex: Int): Boolean {
+        var inSingle = false
+        var inDouble = false
+        var depth = 0
+        var i = 0
+        var lastBetweenAtDepth0 = -1
+        while (i < andIndex) {
+            val c = text[i]
+            when {
+                c == ''' && !inDouble -> inSingle = !inSingle
+                c == '"' && !inSingle -> inDouble = !inDouble
+                !inSingle && !inDouble && c == '(' -> depth++
+                !inSingle && !inDouble && c == ')' -> depth--
+                !inSingle && !inDouble && depth == 0 -> {
+                    if (text.regionMatches(i, "BETWEEN", 0, 7, ignoreCase = true)) {
+                        val beforeOk = i == 0 || !text[i - 1].isLetterOrDigit()
+                        val afterOk = i + 7 >= text.length || !text[i + 7].isLetterOrDigit()
+                        if (beforeOk && afterOk) {
+                            lastBetweenAtDepth0 = i
+                            i += 7
+                            continue
+                        }
+                    }
+                    if (text.regionMatches(i, "AND", 0, 3, ignoreCase = true)) {
+                        val beforeOk = i == 0 || !text[i - 1].isLetterOrDigit()
+                        val afterOk = i + 3 >= text.length || !text[i + 3].isLetterOrDigit()
+                        if (beforeOk && afterOk) {
+                            lastBetweenAtDepth0 = -1
+                            i += 3
+                            continue
+                        }
+                    }
+                    if (text.regionMatches(i, "OR", 0, 2, ignoreCase = true)) {
+                        val beforeOk = i == 0 || !text[i - 1].isLetterOrDigit()
+                        val afterOk = i + 2 >= text.length || !text[i + 2].isLetterOrDigit()
+                        if (beforeOk && afterOk) {
+                            lastBetweenAtDepth0 = -1
+                            i += 2
+                            continue
+                        }
+                    }
+                }
+            }
+            i++
+        }
+        return lastBetweenAtDepth0 >= 0
+    }
+
     private fun splitTopLevel(text: String, separator: Char): List<String> {
         val parts = mutableListOf<String>()
         val sb = StringBuilder()
