@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
@@ -40,6 +41,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep system-window fitting enabled so windowSoftInputMode=adjustResize
+        // actually shrinks the Compose root when the IME opens.
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         recordBreadcrumbSafe("MainActivity.onCreate")
 
         val app = application as ClensApplication

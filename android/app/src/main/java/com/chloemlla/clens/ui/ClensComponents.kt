@@ -188,7 +188,8 @@ internal fun PanelColumn(
         ) {
             StatusBanner(state = state, onDismiss = onDismissFeedback)
             content()
-            Spacer(Modifier.height(12.dp))
+            // Keep room so bottom fields can scroll above the IME.
+            Spacer(Modifier.height(96.dp))
         }
     }
 }
