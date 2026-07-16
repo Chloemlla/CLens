@@ -638,6 +638,25 @@ private fun LeafEditDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        var showMap by remember(node.pathKey) { mutableStateOf(false) }
+                        OutlinedButton(
+                            onClick = { showMap = true },
+                            enabled = enabled,
+                        ) { Text("地图选点") }
+                        if (showMap) {
+                            val seed = DocNodeCodec.parseGeoPoint(text) ?: (0.0 to 0.0)
+                            GeoMapPickerDialog(
+                                initialLat = seed.first,
+                                initialLng = seed.second,
+                                onDismiss = { showMap = false },
+                                onConfirm = { pickedLat, pickedLng ->
+                                    latText = pickedLat.toString()
+                                    lngText = pickedLng.toString()
+                                    text = DocNodeCodec.encodeGeoPoint(pickedLat, pickedLng)
+                                    showMap = false
+                                },
+                            )
+                        }
                     }
                     DocValueType.Binary -> {
                         val binary = DocNodeCodec.parseBinary(text)
