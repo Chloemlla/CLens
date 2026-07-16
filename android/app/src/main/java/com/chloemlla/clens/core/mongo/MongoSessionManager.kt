@@ -23,7 +23,7 @@ class MongoSessionManager {
     suspend fun connect(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
         ensureMongoAuthClassesLoaded()
         val prepared = prepareEndpoint(profile)
-        val client = createClient(prepared.uri)
+        val client = createClient(prepared.uri, profile)
         try {
             val started = System.nanoTime()
             val ping = client.getDatabase("admin").runCommand(Document("ping", 1))
@@ -46,7 +46,7 @@ class MongoSessionManager {
     suspend fun test(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
         ensureMongoAuthClassesLoaded()
         val prepared = prepareEndpoint(profile)
-        val client = createClient(prepared.uri)
+        val client = createClient(prepared.uri, profile)
         try {
             val started = System.nanoTime()
             client.getDatabase("admin").runCommand(Document("ping", 1))
@@ -161,19 +161,27 @@ class MongoSessionManager {
         return base + ssh + ver
     }
 
-    private fun createClient(uri: String): MongoClient {
-        val settings = MongoClientSettings.builder()
+    private fun createClient(uri: String, profile: MongoConnectionProfile): MongoClient {
+        val builder = MongoClientSettings.builder()
             .applyConnectionString(ConnectionString(uri))
-            .applyToClusterSettings { builder ->
-                builder.serverSelectionTimeout(8, TimeUnit.SECONDS)
+            .applyToClusterSettings { cluster ->
+                cluster.serverSelectionTimeout(8, TimeUnit.SECONDS)
             }
-            .applyToSocketSettings { builder ->
-                builder.connectTimeout(8, TimeUnit.SECONDS)
-                builder.readTimeout(30, TimeUnit.SECONDS)
+            .applyToSocketSettings { socket ->
+                socket.connectTimeout(8, TimeUnit.SECONDS)
+                socket.readTimeout(30, TimeUnit.SECONDS)
             }
             .applicationName("CLens-Android")
-            .build()
-        return MongoClient.create(settings)
+        val sslContext = MongoTlsConfig.sslContextOrNull(profile)
+        if (sslContext != null) {
+            builder.applyToSslSettings { ssl ->
+                ssl.enabled(true)
+                ssl.context(sslContext)
+                // Custom CA/client materials imply user-managed trust; still verify hostnames.
+                ssl.invalidHostNameAllowed(false)
+            }
+        }
+        return MongoClient.create(builder.build())
     }
 
     /**
@@ -222,10 +230,37 @@ class MongoSessionManager {
                     ?: error::class.java.simpleName
                 "$prefix: Mongo 驱动类缺失 ($missing)。请升级到修复 R8 keep 规则后的版本。"
             }
-            else -> error.message?.takeIf { it.isNotBlank() } ?: prefix
+            else -> {
+                val raw = error.message?.takeIf { it.isNotBlank() } ?: prefix
+                if (looksLikeCertificateTransparencyFailure(error)) {
+                    "$prefix: TLS 握手失败（证书透明度/私有 CA 可能不合规）。请使用公开 CA 且含 SCT 的证书，或等待客户端证书导入能力。"
+                } else {
+                    raw
+                }
+            }
         }
         val cause = error as? Exception ?: Exception(detail, error)
         return MongoAdminException.Operation(detail, cause)
+    }
+
+    private fun looksLikeCertificateTransparencyFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        var depth = 0
+        while (current != null && depth < 8) {
+            val message = (current.message ?: "").lowercase()
+            if (
+                "certificate transparency" in message ||
+                "signed certificate timestamp" in message ||
+                "no sct" in message ||
+                "missing sct" in message ||
+                message.contains("sct from")
+            ) {
+                return true
+            }
+            current = current.cause
+            depth += 1
+        }
+        return false
     }
 
     private companion object {

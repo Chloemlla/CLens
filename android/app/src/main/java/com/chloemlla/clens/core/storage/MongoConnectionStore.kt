@@ -87,6 +87,10 @@ class MongoConnectionStore(
                     put("defaultDatabase", profile.defaultDatabase)
                     put("replicaSet", profile.replicaSet)
                     put("tls", profile.tls)
+                    put("tlsCaPem", profile.tlsCaPem)
+                    put("tlsClientCertPem", profile.tlsClientCertPem)
+                    put("tlsClientKeyPem", profile.tlsClientKeyPem)
+                    put("tlsClientKeyPassphrase", profile.tlsClientKeyPassphrase)
                     put("directConnection", profile.directConnection)
                     put("readOnly", profile.readOnly)
                     put("sshEnabled", profile.sshEnabled)
@@ -124,6 +128,10 @@ class MongoConnectionStore(
                         defaultDatabase = item.optString("defaultDatabase"),
                         replicaSet = item.optString("replicaSet"),
                         tls = item.optBoolean("tls", false),
+                        tlsCaPem = item.optString("tlsCaPem"),
+                        tlsClientCertPem = item.optString("tlsClientCertPem"),
+                        tlsClientKeyPem = item.optString("tlsClientKeyPem"),
+                        tlsClientKeyPassphrase = item.optString("tlsClientKeyPassphrase"),
                         directConnection = item.optBoolean("directConnection", true),
                         readOnly = item.optBoolean("readOnly", false),
                         sshEnabled = item.optBoolean("sshEnabled", false),

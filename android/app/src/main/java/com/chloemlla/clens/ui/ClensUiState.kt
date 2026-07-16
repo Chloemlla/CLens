@@ -54,6 +54,17 @@ enum class DestructiveConfirmMode {
     LongPress,
 }
 
+data class PendingLocalNetworkPermission(
+    val profile: MongoConnectionProfile,
+    val mode: LocalNetworkPermissionMode,
+)
+
+enum class LocalNetworkPermissionMode {
+    Connect,
+    Test,
+    Reconnect,
+}
+
 data class PendingDestructiveAction(
     val action: DestructiveAction,
     val target: String = "",
@@ -84,6 +95,10 @@ data class ConnectionFormState(
     val defaultDatabase: String = "",
     val replicaSet: String = "",
     val tls: Boolean = false,
+    val tlsCaPem: String = "",
+    val tlsClientCertPem: String = "",
+    val tlsClientKeyPem: String = "",
+    val tlsClientKeyPassphrase: String = "",
     val directConnection: Boolean = true,
     val readOnly: Boolean = false,
     val sshEnabled: Boolean = false,
@@ -214,6 +229,8 @@ data class ClensUiState(
     val connectionHealthy: Boolean = true,
     val reconnecting: Boolean = false,
     val disconnectNotice: String? = null,
+    /** Non-null when UI should launch ACCESS_LOCAL_NETWORK runtime request. */
+    val pendingLocalNetworkPermission: PendingLocalNetworkPermission? = null,
     val loading: Boolean = false,
     val status: String = "",
     val error: String? = null,

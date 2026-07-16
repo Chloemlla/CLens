@@ -341,6 +341,46 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     enabled = !state.loading,
                     onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(tls = checked) } },
                 )
+                if (form.tls || form.tlsCaPem.isNotBlank() || form.tlsClientCertPem.isNotBlank() || form.tlsClientKeyPem.isNotBlank()) {
+                    Text(
+                        text = "可选：粘贴 PEM 证书材料用于自签名 CA 或双向 TLS。密钥仅存加密档案，不进日志。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = form.tlsCaPem,
+                        onValueChange = { value -> viewModel.updateConnectionForm { it.copy(tlsCaPem = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("CA 证书 PEM（可选）") },
+                        enabled = !state.loading,
+                        minLines = 3,
+                    )
+                    OutlinedTextField(
+                        value = form.tlsClientCertPem,
+                        onValueChange = { value -> viewModel.updateConnectionForm { it.copy(tlsClientCertPem = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("客户端证书 PEM（可选）") },
+                        enabled = !state.loading,
+                        minLines = 3,
+                    )
+                    OutlinedTextField(
+                        value = form.tlsClientKeyPem,
+                        onValueChange = { value -> viewModel.updateConnectionForm { it.copy(tlsClientKeyPem = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("客户端私钥 PEM（PKCS#8/RSA，可选）") },
+                        enabled = !state.loading,
+                        minLines = 3,
+                    )
+                    OutlinedTextField(
+                        value = form.tlsClientKeyPassphrase,
+                        onValueChange = { value -> viewModel.updateConnectionForm { it.copy(tlsClientKeyPassphrase = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("客户端私钥口令（可选）") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        enabled = !state.loading,
+                    )
+                }
                 SwitchSettingRow(
                     label = "Direct Connection",
                     checked = form.directConnection,

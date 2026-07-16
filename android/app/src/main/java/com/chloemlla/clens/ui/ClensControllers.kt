@@ -3,6 +3,8 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
+import com.chloemlla.clens.core.mongo.LocalNetworkAccess
+import com.chloemlla.clens.core.mongo.LocalNetworkPermission
 import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.mongo.SshTunnelSession
 import com.chloemlla.clens.core.mongo.SessionHealthCallbacks
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.update
 
 class ClensSessionContext(
     val state: MutableStateFlow<ClensUiState>,
+    val appContext: android.content.Context,
     val connectionStore: MongoConnectionStore,
     val localStore: LocalAppStore,
     val draftStore: DocumentDraftStore,
@@ -53,6 +56,25 @@ class ClensSessionContext(
             throw MongoAdminException.Validation("当前连接为只读模式，已阻止：" + operation)
         }
     }
+
+    fun ensureLocalNetworkAllowed(profile: MongoConnectionProfile) {
+        if (!LocalNetworkAccess.requiresLocalNetworkPermission(profile)) return
+        if (LocalNetworkPermission.isGranted(appContext)) return
+        throw MongoAdminException.Validation(LocalNetworkPermission.deniedMessage())
+    }
+
+    fun requestLocalNetworkIfNeeded(
+        profile: MongoConnectionProfile,
+        mode: LocalNetworkPermissionMode,
+    ): Boolean {
+        if (!LocalNetworkAccess.requiresLocalNetworkPermission(profile)) return false
+        if (LocalNetworkPermission.isGranted(appContext)) return false
+        state.update {
+            it.copy(pendingLocalNetworkPermission = PendingLocalNetworkPermission(profile, mode))
+        }
+        return true
+    }
+
     fun refreshProfiles(status: String? = null) {
         val profiles = connectionStore.listProfiles()
         val activeId = connectionStore.getActiveProfileId()
@@ -70,6 +92,16 @@ class ClensSessionContext(
         val form = state.value.connectionForm
         val port = form.port.toIntOrNull()
             ?: throw MongoAdminException.Validation("端口必须是数字。")
+        val sshPort = if (form.sshEnabled) {
+            form.sshPort.toIntOrNull()
+                ?: throw MongoAdminException.Validation("SSH 端口必须是数字。")
+        } else {
+            form.sshPort.toIntOrNull() ?: 22
+        }
+        val sshRemotePort = form.sshRemotePort.trim()
+            .takeIf { it.isNotBlank() }
+            ?.toIntOrNull()
+            ?: 0
         return MongoConnectionProfile(
             id = form.id ?: UUID.randomUUID().toString(),
             name = form.name.ifBlank { "临时连接" },
@@ -82,8 +114,21 @@ class ClensSessionContext(
             defaultDatabase = form.defaultDatabase.trim(),
             replicaSet = form.replicaSet.trim(),
             tls = form.tls,
+            tlsCaPem = form.tlsCaPem,
+            tlsClientCertPem = form.tlsClientCertPem,
+            tlsClientKeyPem = form.tlsClientKeyPem,
+            tlsClientKeyPassphrase = form.tlsClientKeyPassphrase,
             directConnection = form.directConnection,
             readOnly = form.readOnly,
+            sshEnabled = form.sshEnabled,
+            sshHost = form.sshHost.trim(),
+            sshPort = sshPort,
+            sshUsername = form.sshUsername.trim(),
+            sshPassword = form.sshPassword,
+            sshPrivateKeyPem = form.sshPrivateKeyPem,
+            sshPrivateKeyPassphrase = form.sshPrivateKeyPassphrase,
+            sshRemoteHost = form.sshRemoteHost.trim(),
+            sshRemotePort = sshRemotePort,
         )
     }
 
@@ -142,6 +187,10 @@ class ConnectionController(
                     defaultDatabase = profile.defaultDatabase,
                     replicaSet = profile.replicaSet,
                     tls = profile.tls,
+                    tlsCaPem = profile.tlsCaPem,
+                    tlsClientCertPem = profile.tlsClientCertPem,
+                    tlsClientKeyPem = profile.tlsClientKeyPem,
+                    tlsClientKeyPassphrase = profile.tlsClientKeyPassphrase,
                     directConnection = profile.directConnection,
                     readOnly = profile.readOnly,
                     sshEnabled = profile.sshEnabled,
@@ -195,6 +244,10 @@ class ConnectionController(
                 defaultDatabase = form.defaultDatabase.trim(),
                 replicaSet = form.replicaSet.trim(),
                 tls = form.tls,
+                tlsCaPem = form.tlsCaPem,
+                tlsClientCertPem = form.tlsClientCertPem,
+                tlsClientKeyPem = form.tlsClientKeyPem,
+                tlsClientKeyPassphrase = form.tlsClientKeyPassphrase,
                 directConnection = form.directConnection,
                 readOnly = form.readOnly,
                 sshEnabled = form.sshEnabled,
@@ -241,8 +294,10 @@ class ConnectionController(
     }
 
     fun testConnection(profile: MongoConnectionProfile? = null) {
+        val target = profile ?: ctx.formToProfile()
+        if (ctx.requestLocalNetworkIfNeeded(target, LocalNetworkPermissionMode.Test)) return
         ctx.actions.run("测试连接") {
-            val target = profile ?: ctx.formToProfile()
+            ctx.ensureLocalNetworkAllowed(target)
             val result = sessionManager.test(target)
             state.update {
                 it.copy(
@@ -255,8 +310,14 @@ class ConnectionController(
     }
 
     fun connect(profile: MongoConnectionProfile? = null, onConnected: () -> Unit) {
+        // Resolve first; persist form-only profiles only after permission allows the attempt.
+        val target = profile ?: ctx.formToProfile()
+        if (ctx.requestLocalNetworkIfNeeded(target, LocalNetworkPermissionMode.Connect)) return
         ctx.actions.run("建立连接") {
-            val target = profile ?: ctx.formToProfile().also { connectionStore.upsert(it) }
+            ctx.ensureLocalNetworkAllowed(target)
+            if (profile == null) {
+                connectionStore.upsert(target)
+            }
             val result = sessionManager.connect(target)
             connectionStore.setActiveProfileId(target.id)
             ctx.refreshProfiles()
@@ -426,7 +487,9 @@ class SessionHealthController(
             }
             return
         }
+        if (ctx.requestLocalNetworkIfNeeded(profile, LocalNetworkPermissionMode.Reconnect)) return
         ctx.actions.run("手动重连", silent = true) {
+            ctx.ensureLocalNetworkAllowed(profile)
             state.update {
                 it.copy(
                     reconnecting = true,
