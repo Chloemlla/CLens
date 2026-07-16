@@ -22,6 +22,6 @@ class DocumentDraftStoreLogicTest {
 
     @Test
     fun maxCodeCharsConstant() {
-        assertEquals(200_000, DocumentDraftStore.MAX_CODE_CHARS)
+        assertEquals(2_000_000, DocumentDraftStore.MAX_CODE_CHARS)
     }
 }

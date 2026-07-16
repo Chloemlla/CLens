@@ -15,6 +15,7 @@ import com.chloemlla.clens.core.mongo.AuditLogEntry
 import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
 import com.chloemlla.clens.core.mongo.OpsCounterSampleState
+import com.chloemlla.clens.core.storage.DocumentDraft
 import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.core.storage.OfflineSnapshotMeta
 import com.chloemlla.clens.core.storage.StagingItem
@@ -126,6 +127,7 @@ data class ClensUiState(
     val selectedDocumentJson: String = "",
     val editorJson: String = "{\n  \n}",
     val documentEditor: DocumentEditorState = DocumentEditorState(),
+    val documentDrafts: List<DocumentDraft> = emptyList(),
     val queryModeAggregate: Boolean = false,
     val queryFilterJson: String = "{}",
     val querySortJson: String = "{}",

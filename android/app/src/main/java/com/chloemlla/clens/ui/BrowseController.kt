@@ -67,6 +67,7 @@ class BrowseController(
         if (value.isNotBlank() && state.value.isConnected) {
             refreshCollectionStats()
         }
+        refreshDocumentDrafts()
     }
 
     /**
@@ -795,6 +796,49 @@ class BrowseController(
         state.update {
             it.copy(documentEditor = it.documentEditor.copy(draftBanner = null, draftId = null, dirty = false))
         }
+        refreshDocumentDrafts()
+    }
+
+    fun refreshDocumentDrafts() {
+        val current = state.value
+        val connectionId = current.connectedProfileId
+        val drafts = if (connectionId.isNullOrBlank()) {
+            emptyList()
+        } else {
+            draftStore.listDrafts(
+                limit = 30,
+                connectionId = connectionId,
+                database = current.selectedDatabase.ifBlank { null },
+                collection = current.selectedCollection.ifBlank { null },
+            )
+        }
+        state.update { it.copy(documentDrafts = drafts) }
+    }
+
+    fun restoreDraftById(draftId: String) {
+        val draft = state.value.documentDrafts.firstOrNull { it.draftId == draftId }
+            ?: draftStore.listDrafts(limit = 100).firstOrNull { it.draftId == draftId }
+            ?: return
+        val editor = buildEditorFromJson(
+            json = draft.codeText,
+            source = if (draft.documentId == null) DocumentEditorSource.InsertBlank else DocumentEditorSource.SelectedDocument,
+            preferredMode = if (draft.mode == "code") DocumentEditorMode.Code else DocumentEditorMode.Tree,
+            draftId = draft.draftId,
+            dirty = true,
+        )
+        state.update {
+            it.copy(
+                editorJson = editor.codeText,
+                documentEditor = editor.copy(draftBanner = null),
+                status = "已恢复草稿 " + formatDraftTime(draft.updatedAtMillis),
+            )
+        }
+    }
+
+    fun deleteDraftById(draftId: String) {
+        draftStore.deleteById(draftId)
+        refreshDocumentDrafts()
+        state.update { it.copy(status = "草稿已删除") }
     }
 
     private suspend fun loadDatabases(silent: Boolean = false) {
@@ -926,6 +970,7 @@ class BrowseController(
         state.update {
             it.copy(documentEditor = it.documentEditor.copy(draftId = draftId))
         }
+        refreshDocumentDrafts()
     }
 
     private fun offerDraftIfPresent(documentId: String?, sourceJson: String) {

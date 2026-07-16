@@ -398,6 +398,39 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
         }
 
+        SectionTitle(text = "文档草稿", subtitle = "Room 本地草稿；按当前连接/库/集合过滤。")
+        ActionRow {
+            OutlinedButton(
+                onClick = viewModel::refreshDocumentDrafts,
+                enabled = !state.loading && state.connectedProfileId != null,
+            ) { Text("刷新草稿") }
+        }
+        if (state.documentDrafts.isEmpty()) {
+            InfoCard(title = "暂无草稿", lines = listOf("编辑文档后会自动保存；可在此恢复或删除。"))
+        } else {
+            state.documentDrafts.take(15).forEach { draft ->
+                val docLabel = draft.documentId ?: "new"
+                InfoCard(
+                    title = draft.database + "." + draft.collection + " · " + docLabel,
+                    lines = listOf(
+                        "mode=" + draft.mode + " · source=" + draft.source,
+                        "updated=" + draft.updatedAtMillis,
+                        draft.codeText.take(120).replace("\n", " "),
+                    ),
+                )
+                ActionRow {
+                    OutlinedButton(
+                        onClick = { viewModel.restoreDocumentDraftById(draft.draftId) },
+                        enabled = !state.loading,
+                    ) { Text("恢复") }
+                    OutlinedButton(
+                        onClick = { viewModel.deleteDocumentDraftById(draft.draftId) },
+                        enabled = !state.loading,
+                    ) { Text("删除") }
+                }
+            }
+        }
+
         DocumentEditorPanel(
             editor = state.documentEditor,
             enabled = !state.loading && state.selectedCollection.isNotBlank(),

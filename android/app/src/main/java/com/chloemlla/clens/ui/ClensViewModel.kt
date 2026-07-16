@@ -268,6 +268,9 @@ class ClensViewModel(
     fun ensureDocumentObjectId() = browse.ensureDocumentObjectId()
     fun restoreDocumentDraft() = browse.restoreDraft()
     fun discardDocumentDraft() = browse.discardDraft()
+    fun refreshDocumentDrafts() = browse.refreshDocumentDrafts()
+    fun restoreDocumentDraftById(draftId: String) = browse.restoreDraftById(draftId)
+    fun deleteDocumentDraftById(draftId: String) = browse.deleteDraftById(draftId)
     fun refreshAuditLog() = advanced.refreshAuditLog()
     fun clearAuditLog() = advanced.clearAuditLog()
 
