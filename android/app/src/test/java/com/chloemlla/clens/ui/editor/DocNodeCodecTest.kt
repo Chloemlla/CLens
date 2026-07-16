@@ -64,4 +64,29 @@ class DocNodeCodecTest {
         val rows = DocNodeCodec.flattenVisible(expanded)
         assertTrue(rows.any { it.node.displayLabel == "child" })
     }
+
+    @Test
+    fun convertsAndGeneratesObjectIdAndDate() {
+        val root = DocNodeCodec.parse("""{"name":"a"}""")
+        val withId = DocNodeCodec.ensureRootObjectId(root)
+        val id = DocNodeCodec.findNode(withId, "_id")
+        assertEquals(DocValueType.ObjectId, id?.type)
+        assertTrue(DocNodeCodec.isValidObjectId(id?.scalar.orEmpty()))
+
+        val asDate = DocNodeCodec.convertType(withId, "name", DocValueType.Date)
+        val dateNode = DocNodeCodec.findNode(asDate, "name")
+        assertEquals(DocValueType.Date, dateNode?.type)
+        assertTrue(DocNodeCodec.parseDateMillis(dateNode?.scalar) != null)
+    }
+
+    @Test
+    fun cloneAndDeleteNodes() {
+        val root = DocNodeCodec.parse("""{"a":1,"b":{"x":2}}""", autoExpandDepth = 2)
+        val cloned = DocNodeCodec.cloneNode(root, "a")
+        assertTrue(DocNodeCodec.findNode(cloned, "a_copy") != null)
+        val deleted = DocNodeCodec.deleteNode(cloned, "b")
+        assertTrue(DocNodeCodec.findNode(deleted, "b") == null)
+        assertTrue(DocNodeCodec.findNode(deleted, "a") != null)
+    }
+
 }

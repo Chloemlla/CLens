@@ -221,6 +221,10 @@ class ClensViewModel(
     fun commitDocumentLeafEdit(pathKey: String, type: DocValueType, scalar: String?) =
         browse.commitDocumentLeafEdit(pathKey, type, scalar)
     fun startBlankDocument() = browse.startBlankDocument()
+    fun deleteDocumentNode(pathKey: String) = browse.deleteDocumentNode(pathKey)
+    fun cloneDocumentNode(pathKey: String) = browse.cloneDocumentNode(pathKey)
+    fun convertDocumentNodeType(pathKey: String, type: DocValueType) = browse.convertDocumentNodeType(pathKey, type)
+    fun ensureDocumentObjectId() = browse.ensureDocumentObjectId()
     fun restoreDocumentDraft() = browse.restoreDraft()
     fun discardDocumentDraft() = browse.discardDraft()
     fun refreshAuditLog() = advanced.refreshAuditLog()

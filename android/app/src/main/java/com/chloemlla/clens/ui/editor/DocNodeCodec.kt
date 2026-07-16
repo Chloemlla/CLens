@@ -100,6 +100,7 @@ object DocNodeCodec {
                     DocValueType.Boolean -> normalizeBoolean(scalar)
                     DocValueType.Int32, DocValueType.Int64, DocValueType.Double -> scalar?.trim()
                     DocValueType.ObjectId -> scalar?.trim()
+                    DocValueType.Date -> scalar?.trim()
                     else -> scalar
                 }
                 val error = validateScalar(newType, normalized)
@@ -127,6 +128,190 @@ object DocNodeCodec {
         val bytes = ByteArray(12)
         java.security.SecureRandom().nextBytes(bytes)
         return bytes.joinToString("") { b -> "%02x".format(b) }
+    }
+
+
+    fun nowIsoDate(): String {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
+        formatter.timeZone = java.util.TimeZone.getDefault()
+        return formatter.format(java.util.Date())
+    }
+
+    fun parseDateMillis(raw: String?): Long? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        value.toLongOrNull()?.let { return it }
+        val patterns = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd",
+        )
+        for (pattern in patterns) {
+            val parsed = runCatching {
+                val formatter = java.text.SimpleDateFormat(pattern, java.util.Locale.US)
+                if (pattern.contains("'Z'")) {
+                    formatter.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                formatter.parse(value)?.time
+            }.getOrNull()
+            if (parsed != null) return parsed
+        }
+        return null
+    }
+
+    fun formatIsoDate(millis: Long): String {
+        val formatter = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
+        formatter.timeZone = java.util.TimeZone.getDefault()
+        return formatter.format(java.util.Date(millis))
+    }
+
+    fun displayValue(node: DocNode): String {
+        return when {
+            node.isContainer -> {
+                val count = node.children?.size ?: 0
+                "${node.type.name.lowercase()} · $count 项"
+            }
+            node.type == DocValueType.Null -> "null"
+            node.type == DocValueType.ObjectId -> node.scalar.orEmpty()
+            node.type == DocValueType.Date -> node.scalar.orEmpty()
+            else -> node.scalar.orEmpty().ifBlank { "\"\"" }
+        }
+    }
+
+    fun convertType(root: DocNode, pathKey: String, newType: DocValueType): DocNode {
+        val current = findNode(root, pathKey) ?: return root
+        if (current.type == newType) return root
+        val defaultScalar = defaultScalarFor(newType, current)
+        return updateScalar(root, pathKey, newType, defaultScalar)
+    }
+
+    fun ensureRootObjectId(root: DocNode): DocNode {
+        if (root.type != DocValueType.Object) return root
+        val hasId = root.children.orEmpty().any { it.key == "_id" }
+        if (hasId) return root
+        val idNode = DocNode(
+            path = listOf(PathSegment.Key("_id")),
+            key = "_id",
+            type = DocValueType.ObjectId,
+            scalar = generateObjectIdHex(),
+            collapsed = false,
+        )
+        return repath(root.copy(children = listOf(idNode) + root.children.orEmpty()))
+    }
+
+    fun deleteNode(root: DocNode, pathKey: String): DocNode {
+        if (pathKey.isBlank()) return root
+        val target = findNode(root, pathKey) ?: return root
+        val parentPath = parentPathKey(target.path)
+        if (parentPath == null) return root
+        val parent = if (parentPath.isEmpty()) root else findNode(root, parentPath) ?: return root
+        val nextChildren = when (parent.type) {
+            DocValueType.Object -> parent.children.orEmpty().filterNot { it.pathKey == pathKey }
+            DocValueType.Array -> parent.children.orEmpty().filterNot { it.pathKey == pathKey }
+            else -> return root
+        }
+        val updatedParent = parent.copy(children = nextChildren)
+        val withParent = if (parentPath.isEmpty()) updatedParent else replaceNode(root, parentPath, updatedParent)
+        return repath(withParent)
+    }
+
+    fun cloneNode(root: DocNode, pathKey: String): DocNode {
+        if (pathKey.isBlank()) return root
+        val target = findNode(root, pathKey) ?: return root
+        val parentPath = parentPathKey(target.path) ?: return root
+        val parent = if (parentPath.isEmpty()) root else findNode(root, parentPath) ?: return root
+        val children = parent.children.orEmpty()
+        val cloned = deepCopyNode(target)
+        val nextChildren = when (parent.type) {
+            DocValueType.Object -> {
+                val baseKey = (target.key ?: "field") + "_copy"
+                val uniqueKey = uniqueObjectKey(children, baseKey)
+                children + cloned.copy(key = uniqueKey)
+            }
+            DocValueType.Array -> children + cloned.copy(key = null)
+            else -> return root
+        }
+        val updatedParent = parent.copy(children = nextChildren, collapsed = false)
+        val withParent = if (parentPath.isEmpty()) updatedParent else replaceNode(root, parentPath, updatedParent)
+        return repath(withParent)
+    }
+
+    private fun defaultScalarFor(type: DocValueType, current: DocNode): String? {
+        return when (type) {
+            DocValueType.Null -> null
+            DocValueType.Boolean -> if (current.scalar.equals("true", true)) "true" else "false"
+            DocValueType.Int32 -> current.scalar?.toIntOrNull()?.toString() ?: "0"
+            DocValueType.Int64 -> current.scalar?.toLongOrNull()?.toString() ?: "0"
+            DocValueType.Double -> current.scalar?.toDoubleOrNull()?.toString() ?: "0.0"
+            DocValueType.ObjectId -> {
+                val raw = current.scalar?.trim().orEmpty()
+                if (isValidObjectId(raw)) raw else generateObjectIdHex()
+            }
+            DocValueType.Date -> {
+                parseDateMillis(current.scalar)?.let { formatIsoDate(it) } ?: nowIsoDate()
+            }
+            DocValueType.String -> current.scalar.orEmpty()
+            DocValueType.Object, DocValueType.Array -> null
+            else -> current.scalar
+        }
+    }
+
+    private fun parentPathKey(path: List<PathSegment>): String? {
+        if (path.isEmpty()) return null
+        if (path.size == 1) return ""
+        return path.dropLast(1).joinToString(".") { segment ->
+            when (segment) {
+                is PathSegment.Key -> segment.name
+                is PathSegment.Index -> segment.index.toString()
+            }
+        }
+    }
+
+    private fun replaceNode(root: DocNode, pathKey: String, replacement: DocNode): DocNode {
+        if (root.pathKey == pathKey) return replacement
+        val children = root.children ?: return root
+        return root.copy(
+            children = children.map { child ->
+                if (child.pathKey == pathKey || pathKey.startsWith(child.pathKey + ".")) {
+                    replaceNode(child, pathKey, replacement)
+                } else {
+                    child
+                }
+            },
+        )
+    }
+
+    private fun deepCopyNode(node: DocNode): DocNode {
+        return node.copy(
+            children = node.children?.map { deepCopyNode(it) },
+            error = null,
+        )
+    }
+
+    private fun uniqueObjectKey(children: List<DocNode>, base: String): String {
+        if (children.none { it.key == base }) return base
+        var index = 2
+        while (children.any { it.key == base + index }) {
+            index += 1
+        }
+        return base + index
+    }
+
+    private fun repath(node: DocNode, path: List<PathSegment> = emptyList(), key: String? = node.key): DocNode {
+        val children = when (node.type) {
+            DocValueType.Object -> node.children.orEmpty().map { child ->
+                val childKey = child.key ?: "field"
+                repath(child, path + PathSegment.Key(childKey), childKey)
+            }
+            DocValueType.Array -> node.children.orEmpty().mapIndexed { index, child ->
+                repath(child, path + PathSegment.Index(index), "[$index]")
+            }
+            else -> null
+        }
+        return node.copy(path = path, key = key, children = children)
     }
 
     private fun fromJsonObject(
@@ -298,6 +483,7 @@ object DocNodeCodec {
             DocValueType.Double -> if (scalar?.toDoubleOrNull() == null) "不是合法 Double" else null
             DocValueType.Boolean -> if (scalar == null || scalar != "true" && scalar != "false") "Boolean 仅支持 true/false" else null
             DocValueType.ObjectId -> if (scalar.isNullOrBlank() || !isValidObjectId(scalar)) "ObjectId 必须是 24 位十六进制" else null
+            DocValueType.Date -> if (scalar.isNullOrBlank() || parseDateMillis(scalar) == null) "Date 需为 ISO-8601 或毫秒时间戳" else null
             DocValueType.Null -> null
             else -> null
         }

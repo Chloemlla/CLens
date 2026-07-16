@@ -3,6 +3,7 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.storage.DocumentDraft
 import com.chloemlla.clens.ui.editor.DocNodeCodec
+import com.chloemlla.clens.ui.editor.DocNode
 import com.chloemlla.clens.ui.editor.DocValueType
 import com.chloemlla.clens.ui.editor.DocumentEditorMode
 import com.chloemlla.clens.ui.editor.DocumentEditorSource
@@ -138,6 +139,8 @@ class BrowseController(
                     action = DestructiveAction.DropDatabase,
                     target = name,
                     message = "将永久删除数据库 `" + name + "` 及其全部集合。请输入数据库名以确认。",
+                    confirmToken = name,
+                    confirmMode = DestructiveConfirmMode.TypeName,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -209,7 +212,9 @@ class BrowseController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DropCollection,
                     target = collection,
-                    message = "将永久删除集合 `" + db + "." + collection + "`。",
+                    message = "将永久删除集合 `" + db + "." + collection + "`。请输入集合名确认。",
+                    confirmToken = collection,
+                    confirmMode = DestructiveConfirmMode.TypeName,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -399,7 +404,9 @@ class BrowseController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.DeleteMany,
                     target = it.selectedCollection,
-                    message = "将按当前 Filter 执行 deleteMany：`" + it.selectedDatabase + "." + it.selectedCollection + "`。",
+                    message = "将按当前 Filter 执行 deleteMany：`" + it.selectedDatabase + "." + it.selectedCollection + "`。请输入集合名确认。",
+                    confirmToken = it.selectedCollection,
+                    confirmMode = DestructiveConfirmMode.TypeName,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -461,7 +468,9 @@ class BrowseController(
                 pendingDestructive = PendingDestructiveAction(
                     action = DestructiveAction.CompactCollection,
                     target = collection,
-                    message = "将对集合 `" + state.value.selectedDatabase + "." + collection + "` 执行 compact。此操作可能长时间锁表。",
+                    message = "将对集合 `" + state.value.selectedDatabase + "." + collection + "` 执行 compact。此操作可能长时间锁表。请长按 3 秒确认。",
+                    confirmToken = collection,
+                    confirmMode = DestructiveConfirmMode.LongPress,
                 ),
                 destructiveConfirmInput = "",
             )
@@ -648,6 +657,42 @@ class BrowseController(
                     editingPath = null,
                     codeDiagnostics = emptyList(),
                     parseError = null,
+                ),
+            )
+        }
+        persistDraft()
+    }
+
+
+    fun deleteDocumentNode(pathKey: String) {
+        mutateTree { DocNodeCodec.deleteNode(it, pathKey) }
+    }
+
+    fun cloneDocumentNode(pathKey: String) {
+        mutateTree { DocNodeCodec.cloneNode(it, pathKey) }
+    }
+
+    fun convertDocumentNodeType(pathKey: String, type: DocValueType) {
+        mutateTree { DocNodeCodec.convertType(it, pathKey, type) }
+    }
+
+    fun ensureDocumentObjectId() {
+        mutateTree { DocNodeCodec.ensureRootObjectId(it) }
+    }
+
+    private fun mutateTree(transform: (DocNode) -> DocNode) {
+        state.update { current ->
+            val root = transform(current.documentEditor.root)
+            val code = runCatching { DocNodeCodec.serialize(root) }.getOrDefault(current.documentEditor.codeText)
+            current.copy(
+                editorJson = code,
+                documentEditor = current.documentEditor.copy(
+                    root = root,
+                    codeText = code,
+                    dirty = true,
+                    codeDiagnostics = emptyList(),
+                    parseError = null,
+                    editingPath = null,
                 ),
             )
         }
