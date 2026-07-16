@@ -56,12 +56,7 @@ object DocNodeCodec {
     }
 
     fun diagnostics(json: String): List<String> {
-        val trimmed = json.trim()
-        if (trimmed.isEmpty()) return listOf("JSON 不能为空")
-        return runCatching {
-            JSONTokener(trimmed).nextValue()
-            emptyList()
-        }.getOrElse { listOf(it.message ?: "JSON 语法错误") }
+        return JsonCodeAssist.diagnosticMessages(json)
     }
 
     fun flattenVisible(root: DocNode): List<DocTreeRow> {

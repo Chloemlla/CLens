@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,10 +49,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import com.chloemlla.clens.ui.JsonField
 import com.chloemlla.clens.ui.copyTextToClipboard
 import java.util.Calendar
 
@@ -178,26 +180,14 @@ internal fun DocumentEditorPanel(
                 )
             }
             DocumentEditorMode.Code -> {
-                JsonField(
-                    label = "JSON / 插入文档",
-                    value = editor.codeText,
+                DocumentCodeEditor(
+                    codeText = editor.codeText,
+                    diagnostics = editor.codeDiagnostics,
                     enabled = editable,
-                    minLines = 8,
-                    onValueChange = onCodeChange,
+                    canApply = editor.canApplyCode,
+                    onCodeChange = onCodeChange,
+                    onApplyCode = onApplyCode,
                 )
-                if (editor.codeDiagnostics.isNotEmpty()) {
-                    Text(
-                        text = editor.codeDiagnostics.joinToString("\n"),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                OutlinedButton(
-                    onClick = onApplyCode,
-                    enabled = editable && editor.canApplyCode,
-                ) {
-                    Text("应用到树")
-                }
             }
         }
 
@@ -676,6 +666,152 @@ private fun FullScreenStringEditorDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         },
     )
+}
+
+
+@Composable
+private fun DocumentCodeEditor(
+    codeText: String,
+    diagnostics: List<String>,
+    enabled: Boolean,
+    canApply: Boolean,
+    onCodeChange: (String) -> Unit,
+    onApplyCode: () -> Unit,
+) {
+    var fieldValue by remember { mutableStateOf(TextFieldValue(codeText, TextRange(codeText.length))) }
+    LaunchedEffect(codeText) {
+        if (fieldValue.text != codeText && !isLikelyLocalTyping(fieldValue.text, codeText)) {
+            fieldValue = TextFieldValue(codeText, TextRange(codeText.length.coerceAtLeast(0)))
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        EditorSymbolBar(
+            enabled = enabled,
+            onInsert = { symbol ->
+                val next = JsonCodeAssist.insertSymbol(fieldValue, symbol)
+                fieldValue = next
+                onCodeChange(next.text)
+            },
+            onFormat = {
+                val formatted = JsonCodeAssist.formatJsonIfValid(fieldValue.text)
+                if (formatted != null) {
+                    fieldValue = TextFieldValue(formatted, TextRange(formatted.length))
+                    onCodeChange(formatted)
+                }
+            },
+        )
+
+        OutlinedTextField(
+            value = fieldValue,
+            onValueChange = { incoming ->
+                val assisted = JsonCodeAssist.assistTyping(fieldValue, incoming)
+                fieldValue = assisted
+                onCodeChange(assisted.text)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 180.dp, max = 360.dp),
+            enabled = enabled,
+            label = { Text("JSON / 插入文档") },
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            minLines = 8,
+            isError = diagnostics.isNotEmpty(),
+        )
+
+        if (diagnostics.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "JSON 诊断",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    diagnostics.take(4).forEach { item ->
+                        Text(
+                            text = "• $item",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = "JSON 合法",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onApplyCode,
+                enabled = enabled && canApply,
+            ) {
+                Text("应用到树")
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditorSymbolBar(
+    enabled: Boolean,
+    onInsert: (String) -> Unit,
+    onFormat: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf("{", "}", "[", "]", "\"", ":", ",", "\n").forEach { symbol ->
+            val label = if (symbol == "\n") "↵" else symbol
+            FilterChip(
+                selected = false,
+                onClick = { onInsert(symbol) },
+                enabled = enabled,
+                label = {
+                    Text(
+                        text = label,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+            )
+        }
+        FilterChip(
+            selected = false,
+            onClick = onFormat,
+            enabled = enabled,
+            label = { Text("格式化") },
+        )
+    }
+}
+
+/**
+ * Heuristic: if external codeText is a pretty-format or bulk replace, resync.
+ * For small typing diffs we keep local TextFieldValue ownership.
+ */
+private fun isLikelyLocalTyping(local: String, external: String): Boolean {
+    if (local == external) return true
+    val delta = kotlin.math.abs(local.length - external.length)
+    return delta <= 2
 }
 
 private fun convertTypeOptions(): List<DocValueType> {

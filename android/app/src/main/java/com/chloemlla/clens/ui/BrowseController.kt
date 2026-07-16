@@ -3,6 +3,7 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.storage.DocumentDraft
 import com.chloemlla.clens.ui.editor.DocNodeCodec
+import com.chloemlla.clens.ui.editor.JsonCodeAssist
 import com.chloemlla.clens.ui.editor.DocNode
 import com.chloemlla.clens.ui.editor.DocValueType
 import com.chloemlla.clens.ui.editor.DocumentEditorMode
@@ -81,7 +82,7 @@ class BrowseController(
                 ClensViewModel.Field.BrowseSort -> current.copy(browseSortJson = value)
                 ClensViewModel.Field.BrowseProjection -> current.copy(browseProjectionJson = value)
                 ClensViewModel.Field.EditorJson -> {
-                    val diagnostics = DocNodeCodec.diagnostics(value)
+                    val diagnostics = JsonCodeAssist.diagnosticMessages(value)
                     current.copy(
                         editorJson = value,
                         documentEditor = current.documentEditor.copy(
@@ -571,7 +572,7 @@ class BrowseController(
                     documentEditor = editor.copy(
                         mode = DocumentEditorMode.Code,
                         codeText = code,
-                        codeDiagnostics = DocNodeCodec.diagnostics(code),
+                        codeDiagnostics = JsonCodeAssist.diagnosticMessages(code),
                         parseError = null,
                     ),
                 )
@@ -585,7 +586,7 @@ class BrowseController(
     fun applyCodeToTree() {
         val current = state.value
         val code = current.documentEditor.codeText
-        val diagnostics = DocNodeCodec.diagnostics(code)
+        val diagnostics = JsonCodeAssist.diagnosticMessages(code)
         if (diagnostics.isNotEmpty()) {
             state.update {
                 it.copy(
@@ -815,7 +816,7 @@ class BrowseController(
         draftId: String? = null,
         dirty: Boolean = false,
     ): DocumentEditorState {
-        val diagnostics = DocNodeCodec.diagnostics(json)
+        val diagnostics = JsonCodeAssist.diagnosticMessages(json)
         val parsed = DocNodeCodec.tryParse(json)
         val root = parsed.getOrElse { DocNodeCodec.emptyObject(collapsed = false) }
         val code = if (diagnostics.isEmpty()) {
@@ -843,7 +844,7 @@ class BrowseController(
                     .getOrElse { throw MongoAdminException.Validation(it.message ?: "文档树序列化失败") }
             }
             DocumentEditorMode.Code -> {
-                val diagnostics = DocNodeCodec.diagnostics(editor.codeText)
+                val diagnostics = JsonCodeAssist.diagnosticMessages(editor.codeText)
                 if (diagnostics.isNotEmpty()) {
                     throw MongoAdminException.Validation(diagnostics.first())
                 }
