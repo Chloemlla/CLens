@@ -85,6 +85,15 @@ data class ConnectionFormState(
     val tls: Boolean = false,
     val directConnection: Boolean = true,
     val readOnly: Boolean = false,
+    val sshEnabled: Boolean = false,
+    val sshHost: String = "",
+    val sshPort: String = "22",
+    val sshUsername: String = "",
+    val sshPassword: String = "",
+    val sshPrivateKeyPem: String = "",
+    val sshPrivateKeyPassphrase: String = "",
+    val sshRemoteHost: String = "",
+    val sshRemotePort: String = "",
 )
 
 data class ClensUiState(
@@ -128,6 +137,7 @@ data class ClensUiState(
     val querySqlPreview: String = "",
     val querySqlLimit: Int? = null,
     val querySqlSkip: Int? = null,
+    val querySqlGuideExpanded: Boolean = true,
     val queryFavoriteNameInput: String = "",
     val queryFavorites: List<QueryFavoriteEntry> = emptyList(),
     val queryResults: List<String> = emptyList(),
@@ -216,4 +226,3 @@ data class ClensUiState(
     val writesBlocked: Boolean
         get() = connectedReadOnly || isSelectedView
 }
-

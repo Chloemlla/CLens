@@ -104,13 +104,11 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     }
                 }
                 QueryInputMode.Sql -> {
-                    InfoCard(
-                        title = "SQL-to-NoSQL（Find 子集）",
-                        lines = listOf(
-                            "支持 SELECT / WHERE / ORDER BY / LIMIT / OFFSET",
-                            "比较符、AND、IN、LIKE、IS NULL；不支持 JOIN / GROUP BY / OR",
-                            "点击翻译预览或执行时本地转换，不在输入时实时解析",
-                        ),
+                    SqlUsageGuide(
+                        expanded = state.querySqlGuideExpanded,
+                        enabled = !state.loading,
+                        onExpandedChange = viewModel::setSqlGuideExpanded,
+                        onApplyExample = viewModel::applySqlExample,
                     )
                     OutlinedTextField(
                         value = state.querySqlInput,
@@ -236,6 +234,93 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         )
         if (state.explainJson.isNotBlank()) {
             JsonField("Explain", state.explainJson, enabled = false, minLines = 8) {}
+        }
+    }
+}
+
+private data class SqlExample(
+    val label: String,
+    val sql: String,
+)
+
+@Composable
+private fun SqlUsageGuide(
+    expanded: Boolean,
+    enabled: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onApplyExample: (String) -> Unit,
+) {
+    val examples = listOf(
+        SqlExample(
+            label = "基础比较",
+            sql = "SELECT * FROM users WHERE age > 18",
+        ),
+        SqlExample(
+            label = "投影排序",
+            sql = "SELECT name, age FROM users WHERE status = 'active' ORDER BY age DESC LIMIT 20",
+        ),
+        SqlExample(
+            label = "IN + LIKE",
+            sql = "SELECT * FROM logs WHERE tag IN ('a', 'b') AND name LIKE 'cli%'",
+        ),
+        SqlExample(
+            label = "空值判断",
+            sql = "SELECT _id, owner FROM docs WHERE deletedAt IS NULL AND owner IS NOT NULL",
+        ),
+    )
+
+    InfoCard(
+        title = "SQL 使用教程",
+        lines = if (expanded) {
+            listOf(
+                "1. 关闭聚合模式，选择 Find 输入模式里的 SQL。",
+                "2. 先在「浏览」选数据库；FROM 可指定集合，也可省略并沿用当前集合。",
+                "3. 写完 SQL 后点「翻译预览」核对 Mongo 语句，再点「执行 SQL」。",
+                "4. 支持：SELECT / WHERE / ORDER BY / LIMIT / OFFSET。",
+                "5. 条件支持：= != <> > >= < <=、AND、IN、LIKE、IS NULL / IS NOT NULL。",
+                "6. 不支持：JOIN、GROUP BY、OR、函数、子查询、写操作。",
+                "7. 翻译在本地完成，仅在预览/执行时解析，避免边输入边卡顿。",
+                "8. 执行成功后会写入查询历史（保存的是 Mongo 条件，不是原始 SQL）。",
+            )
+        } else {
+            listOf("已收起。需要时点下方「展开教程」查看步骤与示例。")
+        },
+    )
+
+    ActionRow {
+        if (expanded) {
+            OutlinedButton(
+                onClick = { onExpandedChange(false) },
+                enabled = enabled,
+            ) { Text("收起教程") }
+        } else {
+            OutlinedButton(
+                onClick = { onExpandedChange(true) },
+                enabled = enabled,
+            ) { Text("展开教程") }
+        }
+    }
+
+    if (expanded) {
+        Text(
+            text = "示例（点选填入）",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            examples.forEach { example ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onApplyExample(example.sql) },
+                    enabled = enabled,
+                    label = { Text(example.label) },
+                )
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
 import com.chloemlla.clens.core.mongo.MongoSessionManager
+import com.chloemlla.clens.core.mongo.SshTunnelSession
 import com.chloemlla.clens.core.mongo.SessionHealthCallbacks
 import com.chloemlla.clens.core.mongo.SessionHealthMonitor
 import com.chloemlla.clens.core.storage.MongoConnectionStore
@@ -35,6 +36,7 @@ class ClensSessionContext(
                 queryFavorites = localStore.listQueryFavorites(),
                 auditLog = localStore.listAuditLog(),
                 verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
+                querySqlGuideExpanded = !localStore.isSqlGuideSeen(),
                 offlineSnapshots = snapshotStore.list(connectionId = state.value.connectedProfileId),
                 stagingItems = stagingStore.list(),
             )
@@ -142,6 +144,15 @@ class ConnectionController(
                     tls = profile.tls,
                     directConnection = profile.directConnection,
                     readOnly = profile.readOnly,
+                    sshEnabled = profile.sshEnabled,
+                    sshHost = profile.sshHost,
+                    sshPort = profile.sshPort.toString(),
+                    sshUsername = profile.sshUsername,
+                    sshPassword = profile.sshPassword,
+                    sshPrivateKeyPem = profile.sshPrivateKeyPem,
+                    sshPrivateKeyPassphrase = profile.sshPrivateKeyPassphrase,
+                    sshRemoteHost = profile.sshRemoteHost,
+                    sshRemotePort = if (profile.sshRemotePort > 0) profile.sshRemotePort.toString() else "",
                 ),
                 status = "编辑连接：" + profile.name,
                 error = null,
@@ -159,6 +170,19 @@ class ConnectionController(
             val form = state.value.connectionForm
             val port = form.port.toIntOrNull()
                 ?: throw MongoAdminException.Validation("端口必须是数字。")
+            val sshPort = if (form.sshEnabled) {
+                form.sshPort.toIntOrNull()
+                    ?: throw MongoAdminException.Validation("SSH 端口必须是数字。")
+            } else {
+                form.sshPort.toIntOrNull() ?: 22
+            }
+            val sshRemotePort = form.sshRemotePort.trim()
+                .takeIf { it.isNotBlank() }
+                ?.toIntOrNull()
+                ?: 0
+            if (form.sshEnabled && form.sshRemotePort.isNotBlank() && sshRemotePort !in 1..65535) {
+                throw MongoAdminException.Validation("SSH 远程端口必须在 1-65535。")
+            }
             val profile = MongoConnectionProfile(
                 id = form.id ?: UUID.randomUUID().toString(),
                 name = form.name,
@@ -173,7 +197,19 @@ class ConnectionController(
                 tls = form.tls,
                 directConnection = form.directConnection,
                 readOnly = form.readOnly,
+                sshEnabled = form.sshEnabled,
+                sshHost = form.sshHost.trim(),
+                sshPort = sshPort,
+                sshUsername = form.sshUsername.trim(),
+                sshPassword = form.sshPassword,
+                sshPrivateKeyPem = form.sshPrivateKeyPem,
+                sshPrivateKeyPassphrase = form.sshPrivateKeyPassphrase,
+                sshRemoteHost = form.sshRemoteHost.trim(),
+                sshRemotePort = sshRemotePort,
             )
+            if (profile.sshEnabled) {
+                SshTunnelSession.validate(profile)
+            }
             connectionStore.upsert(profile)
             ctx.refreshProfiles(status = "已保存连接 " + profile.name)
             state.update { it.copy(editingConnection = false, connectionForm = ConnectionFormState()) }

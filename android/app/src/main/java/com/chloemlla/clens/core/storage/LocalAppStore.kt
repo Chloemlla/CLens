@@ -72,6 +72,13 @@ class LocalAppStore(context: Context) {
         prefs.edit { putBoolean(KEY_VERTICAL_CATALOG_LISTS, enabled) }
     }
 
+    fun isSqlGuideSeen(): Boolean =
+        prefs.getBoolean(KEY_SQL_GUIDE_SEEN, false)
+
+    fun setSqlGuideSeen(seen: Boolean) {
+        prefs.edit { putBoolean(KEY_SQL_GUIDE_SEEN, seen) }
+    }
+
     private fun writeHistory(items: List<QueryHistoryEntry>) {
         val array = JSONArray()
         items.forEach { item ->
@@ -195,6 +202,7 @@ class LocalAppStore(context: Context) {
         const val KEY_QUERY_FAVORITES = "query_favorites_json"
         const val KEY_AUDIT_LOG = "audit_log_json"
         const val KEY_VERTICAL_CATALOG_LISTS = "vertical_catalog_lists"
+        const val KEY_SQL_GUIDE_SEEN = "sql_query_guide_seen"
         const val MAX_HISTORY = 20
         const val MAX_FAVORITES = 50
         const val MAX_AUDIT = 100

@@ -153,6 +153,8 @@ class ClensViewModel(
         query.translateSql(showStatus = true)
     }
     fun runSqlQuery() = query.runSqlQuery()
+    fun setSqlGuideExpanded(expanded: Boolean) = query.setSqlGuideExpanded(expanded)
+    fun applySqlExample(sql: String) = query.applySqlExample(sql)
     fun updateVisualClause(index: Int, clause: VisualFilterClause) = query.updateVisualClause(index, clause)
     fun addVisualClause() = query.addVisualClause()
     fun removeVisualClause(index: Int) = query.removeVisualClause(index)

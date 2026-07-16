@@ -117,6 +117,26 @@ class QueryController(
         }
     }
 
+    fun setSqlGuideExpanded(expanded: Boolean) {
+        if (!expanded) {
+            ctx.localStore.setSqlGuideSeen(true)
+        }
+        state.update { it.copy(querySqlGuideExpanded = expanded) }
+    }
+
+    fun applySqlExample(sql: String) {
+        state.update {
+            it.copy(
+                querySqlInput = sql,
+                querySqlPreview = "",
+                querySqlLimit = null,
+                querySqlSkip = null,
+                status = "已填入 SQL 示例，可点翻译预览",
+                error = null,
+            )
+        }
+    }
+
     fun translateSql(showStatus: Boolean = true): Boolean {
         val current = state.value
         return try {
