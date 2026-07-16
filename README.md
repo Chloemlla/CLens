@@ -1,5 +1,7 @@
 # CLens
 
+**English** | [简体中文](./README.zh-CN.md)
+
 [![Build CLens Android](https://github.com/Chloemlla/CLens/actions/workflows/clens-android.yml/badge.svg)](https://github.com/Chloemlla/CLens/actions/workflows/clens-android.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
@@ -214,3 +216,4 @@ Useful docs:
 ## License
 
 GPL-3.0 — see [`LICENSE`](./LICENSE).
+
