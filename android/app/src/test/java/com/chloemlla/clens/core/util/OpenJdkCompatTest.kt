@@ -39,12 +39,13 @@ class OpenJdkCompatTest {
     @Test
     fun asListToArrayHasObjectComponentType() {
         // Call the Java Collection overload explicitly; Kotlin hides java.util.Collection#toArray().
-        val list: JavaCollection<String> = Arrays.asList("one", "two")
-        val raw: Array<Any> = list.toArray()
+        // Arrays.asList yields platform types (String!); use String? to match Java nullability.
+        val list: JavaCollection<String?> = Arrays.asList("one", "two")
+        val raw: Array<out Any?> = list.toArray()
         assertEquals(Any::class.java, raw::class.java.componentType)
         try {
             @Suppress("UNCHECKED_CAST")
-            val cast = raw as Array<String>
+            val cast = raw as Array<String?>
             // If the cast somehow succeeds, component access may still be unsafe; force failure.
             fail("unsafe cast should not succeed; got ${cast::class.java}")
         } catch (_: ClassCastException) {
@@ -54,7 +55,7 @@ class OpenJdkCompatTest {
 
     @Test
     fun typedToArrayKeepsStringComponentType() {
-        val list: JavaCollection<String> = Arrays.asList("two", "one")
+        val list: JavaCollection<String?> = Arrays.asList("two", "one")
         val elements: Array<String?> = list.toArray(arrayOfNulls<String>(0))
         assertEquals(String::class.java, elements::class.java.componentType)
         assertEquals("two", elements[0])
