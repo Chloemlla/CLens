@@ -8,7 +8,8 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Parameters
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
-import net.schmizz.sshj.userauth.password.PasswordUtils
+import net.schmizz.sshj.userauth.password.PasswordFinder
+import net.schmizz.sshj.userauth.password.Resource
 
 /**
  * SSH local port-forward session for bastion access to MongoDB.
@@ -113,11 +114,13 @@ class SshTunnelSession private constructor(
                 val passphrase = profile.sshPrivateKeyPassphrase
                     .takeIf { it.isNotBlank() }
                     ?.toCharArray()
-                val keys: KeyProvider = if (passphrase != null) {
-                    client.loadKeys(keyPem, null, PasswordUtils.createOneShotPasswordFinder(passphrase))
-                } else {
-                    client.loadKeys(keyPem, null, null)
+                val finder = passphrase?.let { chars ->
+                    object : PasswordFinder {
+                        override fun reqPassword(resource: Resource<*>?): CharArray = chars.copyOf()
+                        override fun shouldRetry(resource: Resource<*>?): Boolean = false
+                    }
                 }
+                val keys: KeyProvider = client.loadKeys(keyPem, null, finder)
                 client.authPublickey(username, keys)
                 return
             }

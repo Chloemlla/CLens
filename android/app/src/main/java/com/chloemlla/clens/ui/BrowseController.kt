@@ -7,7 +7,6 @@ import com.chloemlla.clens.core.export.DocumentExportFormat
 import com.chloemlla.clens.core.storage.StagingOpType
 import com.chloemlla.clens.core.util.SecretSanitizer
 import com.chloemlla.clens.core.storage.OfflineSnapshotStore
-import java.io.File
 import com.chloemlla.clens.ui.editor.DocNodeCodec
 import com.chloemlla.clens.ui.editor.JsonCodeAssist
 import com.chloemlla.clens.ui.editor.DocNode
@@ -1088,10 +1087,7 @@ class BrowseController(
         }
         ctx.actions.run("导出当前页") {
             val content = DocumentExportCodecs.encode(docs, format)
-            // Store path in exportFilePath for UI to share; write under cache/export
-            val dir = File(ctx.sessionManager.let { java.io.File(System.getProperty("java.io.tmpdir") ?: ".", "clens_export") })
-            // Use Android cache via application if available through repository? Fallback temp.
-            // Controllers lack Context; put content into exportJson for share fallback and format.
+            // Controllers lack Context; keep content in exportJson for the UI share path.
             state.update {
                 it.copy(
                     exportFormat = format,
