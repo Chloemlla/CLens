@@ -25,10 +25,11 @@ class JsonCodeAssistTest {
         assertEquals("{}", withBrace?.text)
         assertEquals(1, withBrace?.cursor)
 
+        // After typing `{`, assist already produces `{}` with cursor between braces.
         val withQuote = JsonCodeAssist.assistTyping(
-            oldText = "{",
+            oldText = "{}",
             oldCursor = 1,
-            newText = "{\"",
+            newText = "{\"}",
             newCursor = 2,
         )
         assertEquals("{\"\"}", withQuote?.text)

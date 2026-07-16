@@ -165,7 +165,15 @@ object JsonCodeAssist {
     }
 
     fun formatJsonIfValid(json: String): String? {
-        return DocNodeCodec.tryParse(json).mapCatching { DocNodeCodec.serialize(it, pretty = true) }.getOrNull()
+        val trimmed = json.trim()
+        if (trimmed.isEmpty()) return null
+        return runCatching {
+            when (val value = JSONTokener(trimmed).nextValue()) {
+                is JSONObject -> value.toString(2)
+                is JSONArray -> value.toString(2)
+                else -> null
+            }
+        }.getOrNull()
     }
 
     private fun applySmartIndent(oldText: String, newlineAt: Int): EditResult {

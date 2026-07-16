@@ -48,11 +48,13 @@ class VisualFilterBuilderTest {
         val encoded = VisualFilterBuilder.toFilterJson(original)
         val decoded = VisualFilterBuilder.fromFilterJson(encoded)
         assertEquals(2, decoded.size)
-        assertEquals("level", decoded[0].field)
-        assertEquals(VisualFilterOp.Gt, decoded[0].op)
-        assertEquals("3", decoded[0].value)
-        assertEquals(VisualFilterOp.Ne, decoded[1].op)
-        assertEquals("guest", decoded[1].value)
+        // JSONObject key order is not stable across platforms/versions.
+        val byField = decoded.associateBy { it.field }
+        assertEquals(setOf("level", "role"), byField.keys)
+        assertEquals(VisualFilterOp.Gt, byField.getValue("level").op)
+        assertEquals("3", byField.getValue("level").value)
+        assertEquals(VisualFilterOp.Ne, byField.getValue("role").op)
+        assertEquals("guest", byField.getValue("role").value)
     }
 
     @Test

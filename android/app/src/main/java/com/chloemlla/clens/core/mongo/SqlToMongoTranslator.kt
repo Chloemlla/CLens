@@ -163,8 +163,9 @@ object SqlToMongoTranslator {
 
     private fun parseWhere(where: String): JSONObject {
         // Reject unsupported boolean operators while allowing identifiers like "note".
+        // "IS NOT NULL" contains the token NOT but is supported; only unary NOT is rejected.
         if (containsKeywordOutsideStrings(where, "OR") ||
-            containsKeywordOutsideStrings(where, "NOT") ||
+            containsUnaryNotOutsideStrings(where) ||
             containsKeywordOutsideStrings(where, "BETWEEN") ||
             containsKeywordOutsideStrings(where, "EXISTS")
         ) {
@@ -390,6 +391,34 @@ object SqlToMongoTranslator {
             i++
         }
         return -1
+    }
+
+    private fun containsUnaryNotOutsideStrings(text: String): Boolean {
+        // Reject bare NOT / NOT (...), but allow "IS NOT NULL".
+        val pattern = Regex("""(?i)(?<![A-Za-z0-9_`"])NOT(?![A-Za-z0-9_`"])""")
+        var inSingle = false
+        var inDouble = false
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c == '\'' && !inDouble -> inSingle = !inSingle
+                c == '"' && !inSingle -> inDouble = !inDouble
+                !inSingle && !inDouble -> {
+                    val match = pattern.find(text, i)
+                    if (match != null && match.range.first == i) {
+                        val before = text.substring(0, i).trimEnd()
+                        val isNotNull = before.length >= 2 && before.substring(before.length - 2).equals("IS", ignoreCase = true) &&
+                            (before.length == 2 || !before[before.length - 3].isLetterOrDigit())
+                        if (!isNotNull) return true
+                        i = match.range.last + 1
+                        continue
+                    }
+                }
+            }
+            i++
+        }
+        return false
     }
 
     private fun containsKeywordOutsideStrings(text: String, keyword: String): Boolean {
