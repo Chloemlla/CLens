@@ -450,7 +450,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     },
                 )
             }
-ActionRow {
+            ActionRow {
                 Button(onClick = viewModel::saveConnection, enabled = !state.loading) {
                     Text("保存连接")
                 }

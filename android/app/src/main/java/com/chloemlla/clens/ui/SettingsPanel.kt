@@ -1,8 +1,6 @@
 package com.chloemlla.clens.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.FilterChip
@@ -11,7 +9,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.ui.security.BiometricAuthHelper
 
@@ -86,10 +83,7 @@ internal fun SettingsPanel(state: ClensUiState, viewModel: ClensViewModel) {
             text = "外观",
             subtitle = "跟随系统 / 浅色 / 深色。",
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        ActionRow {
             ThemeMode.entries.forEach { mode ->
                 FilterChip(
                     selected = state.themeMode == mode,
