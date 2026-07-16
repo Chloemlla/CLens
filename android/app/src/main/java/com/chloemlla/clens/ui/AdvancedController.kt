@@ -386,7 +386,6 @@ class AdvancedController(
         ctx.refreshLocalLists()
         state.update { it.copy(status = "审计日志已清空") }
     }
-}
 
     fun setExportFormat(format: DocumentExportFormat) {
         state.update { it.copy(exportFormat = format) }
@@ -518,3 +517,4 @@ class AdvancedController(
             }
         }
     }
+}

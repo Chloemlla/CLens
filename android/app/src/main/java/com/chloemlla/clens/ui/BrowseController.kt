@@ -7,7 +7,6 @@ import com.chloemlla.clens.core.export.DocumentExportFormat
 import com.chloemlla.clens.core.storage.StagingOpType
 import com.chloemlla.clens.core.util.SecretSanitizer
 import com.chloemlla.clens.core.storage.OfflineSnapshotStore
-import com.chloemlla.clens.core.storage.StagingOpType
 import java.io.File
 import com.chloemlla.clens.ui.editor.DocNodeCodec
 import com.chloemlla.clens.ui.editor.JsonCodeAssist
@@ -991,7 +990,6 @@ class BrowseController(
         val formatter = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         return formatter.format(Date(millis))
     }
-}
 
     fun saveOfflineSnapshot() {
         val current = state.value
@@ -1103,5 +1101,4 @@ class BrowseController(
             }
         }
     }
-
-
+}

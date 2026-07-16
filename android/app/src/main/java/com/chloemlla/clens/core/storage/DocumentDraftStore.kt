@@ -110,6 +110,7 @@ class DocumentDraftStore(context: Context) {
 
     companion object {
         const val PREFS = "clens_document_drafts"
+        const val MAX_CODE_CHARS = 200_000
         fun buildKey(
             connectionId: String,
             database: String,

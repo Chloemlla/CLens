@@ -39,10 +39,10 @@ object JsonCodeAssist {
         if (trimmed.isEmpty()) {
             return listOf(Diagnostic("JSON 不能为空", line = 1, column = 1))
         }
-        return runCatching {
+        return try {
             JSONTokener(trimmed).nextValue()
-            emptyList()
-        }.getOrElse { error ->
+            emptyList<Diagnostic>()
+        } catch (error: Exception) {
             val message = error.message ?: "JSON 语法错误"
             val position = extractPosition(message)
             val lineCol = position?.let { offsetToLineColumn(json, it) }
