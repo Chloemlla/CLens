@@ -16,12 +16,21 @@ import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
 import com.chloemlla.clens.core.mongo.OpsCounterSampleState
 import com.chloemlla.clens.core.storage.ThemeMode
+import com.chloemlla.clens.core.storage.OfflineSnapshotMeta
+import com.chloemlla.clens.core.storage.StagingItem
+import com.chloemlla.clens.core.export.DocumentExportFormat
 import com.chloemlla.clens.ui.editor.DocumentEditorState
 
 enum class ResultViewMode {
     Json,
     Table,
     Cards,
+}
+
+enum class QueryInputMode {
+    Visual,
+    Json,
+    Sql,
 }
 
 enum class DestructiveAction {
@@ -97,7 +106,7 @@ data class ClensUiState(
     val selectedCollectionStats: CollectionSummary? = null,
     val collectionStatsError: String? = null,
     val maintenanceResultJson: String = "",
-    val resultViewMode: ResultViewMode = ResultViewMode.Json,
+    val resultViewMode: ResultViewMode = ResultViewMode.Cards,
     val documents: List<String> = emptyList(),
     val documentCountHint: Long? = null,
     val documentSkip: Int = 0,
@@ -113,8 +122,12 @@ data class ClensUiState(
     val querySortJson: String = "{}",
     val queryProjectionJson: String = "{}",
     val queryPipelineJson: String = "[\n  { \"\$match\": {} }\n]",
-    val queryVisualMode: Boolean = true,
+    val queryInputMode: QueryInputMode = QueryInputMode.Visual,
     val queryVisualClauses: List<VisualFilterClause> = listOf(VisualFilterClause()),
+    val querySqlInput: String = "SELECT * FROM users WHERE age > 18",
+    val querySqlPreview: String = "",
+    val querySqlLimit: Int? = null,
+    val querySqlSkip: Int? = null,
     val queryFavoriteNameInput: String = "",
     val queryFavorites: List<QueryFavoriteEntry> = emptyList(),
     val queryResults: List<String> = emptyList(),
@@ -160,6 +173,14 @@ data class ClensUiState(
     val importDropBefore: Boolean = false,
     val exportLimit: String = "200",
     val exportJson: String = "",
+    val exportFormat: DocumentExportFormat = DocumentExportFormat.JSON,
+    val exportFilePath: String = "",
+    val importSourceName: String = "",
+    val importMappingPreview: List<String> = emptyList(),
+    val offlineSnapshots: List<OfflineSnapshotMeta> = emptyList(),
+    val activeSnapshotId: String? = null,
+    val offlineSnapshotNameInput: String = "",
+    val stagingItems: List<StagingItem> = emptyList(),
     val queryHistory: List<QueryHistoryEntry> = emptyList(),
     val auditLog: List<AuditLogEntry> = emptyList(),
     val currentOps: List<CurrentOpSummary> = emptyList(),
@@ -195,3 +216,4 @@ data class ClensUiState(
     val writesBlocked: Boolean
         get() = connectedReadOnly || isSelectedView
 }
+

@@ -2,6 +2,13 @@ package com.chloemlla.clens.ui
 
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.storage.DocumentDraft
+import com.chloemlla.clens.core.export.DocumentExportCodecs
+import com.chloemlla.clens.core.export.DocumentExportFormat
+import com.chloemlla.clens.core.storage.StagingOpType
+import com.chloemlla.clens.core.util.SecretSanitizer
+import com.chloemlla.clens.core.storage.OfflineSnapshotStore
+import com.chloemlla.clens.core.storage.StagingOpType
+import java.io.File
 import com.chloemlla.clens.ui.editor.DocNodeCodec
 import com.chloemlla.clens.ui.editor.JsonCodeAssist
 import com.chloemlla.clens.ui.editor.DocNode
@@ -81,6 +88,7 @@ class BrowseController(
                 ClensViewModel.Field.BrowseFilter -> current.copy(browseFilterJson = value)
                 ClensViewModel.Field.BrowseSort -> current.copy(browseSortJson = value)
                 ClensViewModel.Field.BrowseProjection -> current.copy(browseProjectionJson = value)
+                ClensViewModel.Field.OfflineSnapshotName -> current.copy(offlineSnapshotNameInput = value)
                 ClensViewModel.Field.EditorJson -> {
                     val diagnostics = JsonCodeAssist.diagnosticMessages(value)
                     current.copy(
@@ -286,25 +294,45 @@ class BrowseController(
         ctx.actions.run("插入文档") {
             val current = state.value
             val payload = resolveEditorPayload(current)
-            val count = repository.insertDocuments(
-                current.selectedDatabase,
-                current.selectedCollection,
-                payload,
-            )
-            clearCurrentDraft(current)
-            state.update {
-                it.copy(
-                    editorJson = payload,
-                    documentEditor = it.documentEditor.copy(
-                        dirty = false,
-                        draftBanner = null,
-                        draftId = null,
-                        codeText = payload,
-                    ),
-                    status = "已插入 " + count + " 条文档",
+            val connectionId = current.connectedProfileId
+            try {
+                val count = repository.insertDocuments(
+                    current.selectedDatabase,
+                    current.selectedCollection,
+                    payload,
                 )
+                clearCurrentDraft(current)
+                state.update {
+                    it.copy(
+                        editorJson = payload,
+                        documentEditor = it.documentEditor.copy(
+                            dirty = false,
+                            draftBanner = null,
+                            draftId = null,
+                            codeText = payload,
+                        ),
+                        status = "已插入 " + count + " 条文档",
+                    )
+                }
+                loadDocumentsInternal(resetSkip = true)
+            } catch (error: Throwable) {
+                if (connectionId.isNullOrBlank()) throw error
+                ctx.stagingStore.enqueue(
+                    type = StagingOpType.INSERT,
+                    connectionId = connectionId,
+                    database = current.selectedDatabase,
+                    collection = current.selectedCollection,
+                    payloadJson = payload,
+                )
+                persistDraft()
+                state.update {
+                    it.copy(
+                        stagingItems = ctx.stagingStore.list(),
+                        status = "插入失败，已加入待提交队列",
+                        error = SecretSanitizer.sanitize(error.message ?: "插入失败"),
+                    )
+                }
             }
-            loadDocumentsInternal(resetSkip = true)
         }
     }
 
@@ -320,27 +348,48 @@ class BrowseController(
             val filter = ctx.extractIdFilter(current.selectedDocumentJson)
                 ?: throw MongoAdminException.Validation("当前文档缺少 _id，无法替换。")
             val payload = resolveEditorPayload(current)
-            val modified = repository.replaceDocument(
-                current.selectedDatabase,
-                current.selectedCollection,
-                filter,
-                payload,
-            )
-            clearCurrentDraft(current)
-            state.update {
-                it.copy(
-                    editorJson = payload,
-                    selectedDocumentJson = payload,
-                    documentEditor = it.documentEditor.copy(
-                        dirty = false,
-                        draftBanner = null,
-                        draftId = null,
-                        codeText = payload,
-                    ),
-                    status = "替换完成，modified=" + modified,
+            val connectionId = current.connectedProfileId
+            try {
+                val modified = repository.replaceDocument(
+                    current.selectedDatabase,
+                    current.selectedCollection,
+                    filter,
+                    payload,
                 )
+                clearCurrentDraft(current)
+                state.update {
+                    it.copy(
+                        editorJson = payload,
+                        selectedDocumentJson = payload,
+                        documentEditor = it.documentEditor.copy(
+                            dirty = false,
+                            draftBanner = null,
+                            draftId = null,
+                            codeText = payload,
+                        ),
+                        status = "替换完成，modified=" + modified,
+                    )
+                }
+                loadDocumentsInternal()
+            } catch (error: Throwable) {
+                if (connectionId.isNullOrBlank()) throw error
+                ctx.stagingStore.enqueue(
+                    type = StagingOpType.REPLACE,
+                    connectionId = connectionId,
+                    database = current.selectedDatabase,
+                    collection = current.selectedCollection,
+                    payloadJson = payload,
+                    filterJson = filter,
+                )
+                persistDraft()
+                state.update {
+                    it.copy(
+                        stagingItems = ctx.stagingStore.list(),
+                        status = "替换失败，已加入待提交队列",
+                        error = SecretSanitizer.sanitize(error.message ?: "替换失败"),
+                    )
+                }
             }
-            loadDocumentsInternal()
         }
     }
 
@@ -943,3 +992,116 @@ class BrowseController(
         return formatter.format(Date(millis))
     }
 }
+
+    fun saveOfflineSnapshot() {
+        val current = state.value
+        val connectionId = current.connectedProfileId
+        if (connectionId.isNullOrBlank()) {
+            state.update { it.copy(error = "请先连接后再保存离线快照。") }
+            return
+        }
+        if (current.selectedDatabase.isBlank() || current.selectedCollection.isBlank()) {
+            state.update { it.copy(error = "请先选择数据库和集合。") }
+            return
+        }
+        ctx.actions.run("保存离线快照") {
+            val limit = OfflineSnapshotStore.clampLimit(
+                current.documentLimit.coerceAtLeast(1)
+            )
+            // Prefer live query with filter for first N, fallback to currently loaded docs.
+            val docs = try {
+                repository.findDocuments(
+                    database = current.selectedDatabase,
+                    collection = current.selectedCollection,
+                    filterJson = current.browseFilterJson,
+                    sortJson = current.browseSortJson,
+                    projectionJson = current.browseProjectionJson,
+                    limit = limit,
+                    skip = 0,
+                ).documents
+            } catch (_: Throwable) {
+                current.documents.take(limit)
+            }
+            val meta = ctx.snapshotStore.save(
+                name = current.offlineSnapshotNameInput.ifBlank { null },
+                connectionId = connectionId,
+                database = current.selectedDatabase,
+                collection = current.selectedCollection,
+                filterJson = current.browseFilterJson,
+                limit = limit,
+                documents = docs,
+            )
+            state.update {
+                it.copy(
+                    offlineSnapshots = ctx.snapshotStore.list(connectionId = connectionId),
+                    status = "已保存离线快照：" + meta.name + " (" + meta.documentCount + " 条)",
+                )
+            }
+        }
+    }
+
+    fun refreshOfflineSnapshots() {
+        val connectionId = state.value.connectedProfileId
+        state.update {
+            it.copy(
+                offlineSnapshots = ctx.snapshotStore.list(connectionId = connectionId),
+                status = "离线快照列表已刷新",
+            )
+        }
+    }
+
+    fun openOfflineSnapshot(snapshotId: String) {
+        ctx.actions.run("打开离线快照", silent = true) {
+            val docs = ctx.snapshotStore.loadDocuments(snapshotId)
+            val meta = ctx.snapshotStore.list().firstOrNull { it.snapshotId == snapshotId }
+            state.update {
+                it.copy(
+                    activeSnapshotId = snapshotId,
+                    documents = docs,
+                    documentCountHint = docs.size.toLong(),
+                    selectedDocumentJson = docs.firstOrNull().orEmpty(),
+                    status = "离线快照：" + (meta?.name ?: snapshotId) + "（只读）",
+                )
+            }
+            docs.firstOrNull()?.let { selectDocument(it) }
+        }
+    }
+
+    fun deleteOfflineSnapshot(snapshotId: String) {
+        ctx.snapshotStore.delete(snapshotId)
+        state.update {
+            it.copy(
+                offlineSnapshots = ctx.snapshotStore.list(connectionId = it.connectedProfileId),
+                activeSnapshotId = if (it.activeSnapshotId == snapshotId) null else it.activeSnapshotId,
+                status = "已删除离线快照",
+            )
+        }
+    }
+
+    fun clearActiveOfflineSnapshot() {
+        state.update { it.copy(activeSnapshotId = null, status = "已退出离线快照浏览") }
+    }
+
+    fun exportCurrentPage(format: DocumentExportFormat) {
+        val docs = state.value.documents
+        if (docs.isEmpty()) {
+            state.update { it.copy(error = "当前页没有文档可导出") }
+            return
+        }
+        ctx.actions.run("导出当前页") {
+            val content = DocumentExportCodecs.encode(docs, format)
+            // Store path in exportFilePath for UI to share; write under cache/export
+            val dir = File(ctx.sessionManager.let { java.io.File(System.getProperty("java.io.tmpdir") ?: ".", "clens_export") })
+            // Use Android cache via application if available through repository? Fallback temp.
+            // Controllers lack Context; put content into exportJson for share fallback and format.
+            state.update {
+                it.copy(
+                    exportFormat = format,
+                    exportJson = content,
+                    status = "当前页已导出为 " + format.extension.uppercase(),
+                )
+            }
+        }
+    }
+
+

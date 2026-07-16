@@ -24,6 +24,8 @@ import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.OfflineSnapshotStore
+import com.chloemlla.clens.core.storage.StagingQueueStore
 import com.chloemlla.clens.core.storage.SecurityPrefsStore
 import com.chloemlla.clens.ui.ClensApp
 import com.chloemlla.clens.ui.ClensTheme
@@ -125,11 +127,13 @@ class MainActivity : FragmentActivity() {
             val store = MongoConnectionStore(applicationContext)
             val localStore = LocalAppStore(applicationContext)
             val draftStore = DocumentDraftStore(applicationContext)
+            val snapshotStore = OfflineSnapshotStore(applicationContext)
+            val stagingStore = StagingQueueStore(applicationContext)
             val sessionManager = MongoSessionManager()
             val repository = MongoAdminRepository(sessionManager)
             ViewModelProvider(
                 this,
-                ClensViewModel.Factory(store, localStore, draftStore, securityPrefs, sessionManager, repository),
+                ClensViewModel.Factory(store, localStore, draftStore, snapshotStore, stagingStore, securityPrefs, sessionManager, repository),
             )[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             Log.e(TAG, "Failed to create ClensViewModel", throwable)
@@ -148,3 +152,4 @@ class MainActivity : FragmentActivity() {
         const val TAG = "MainActivity"
     }
 }
+

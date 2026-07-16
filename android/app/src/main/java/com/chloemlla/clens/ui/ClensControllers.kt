@@ -9,6 +9,8 @@ import com.chloemlla.clens.core.mongo.SessionHealthMonitor
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.OfflineSnapshotStore
+import com.chloemlla.clens.core.storage.StagingQueueStore
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +22,8 @@ class ClensSessionContext(
     val connectionStore: MongoConnectionStore,
     val localStore: LocalAppStore,
     val draftStore: DocumentDraftStore,
+    val snapshotStore: OfflineSnapshotStore,
+    val stagingStore: StagingQueueStore,
     val sessionManager: MongoSessionManager,
     val repository: MongoAdminRepository,
     val actions: ClensActionRunner,
@@ -31,6 +35,8 @@ class ClensSessionContext(
                 queryFavorites = localStore.listQueryFavorites(),
                 auditLog = localStore.listAuditLog(),
                 verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
+                offlineSnapshots = snapshotStore.list(connectionId = state.value.connectedProfileId),
+                stagingItems = stagingStore.list(),
             )
         }
     }
@@ -408,3 +414,4 @@ class SessionHealthController(
         }
     }
 }
+

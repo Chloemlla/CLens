@@ -1,9 +1,7 @@
 package com.chloemlla.clens.core.storage
 
 import android.content.Context
-import androidx.core.content.edit
 import java.io.File
-import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -11,12 +9,6 @@ import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * Named offline read-only snapshot of the first N documents for a filter.
- *
- * Documents are stored as JSONL under [Context.getFilesDir]; metadata index stays
- * in SharedPreferences only (never full documents).
- */
 data class OfflineSnapshotMeta(
     val snapshotId: String,
     val name: String,
@@ -29,15 +21,15 @@ data class OfflineSnapshotMeta(
     val documentCount: Int,
 )
 
+/**
+ * File-backed offline snapshots.
+ * Documents: filesDir/offline_snapshots/<id>.jsonl
+ * Index: filesDir/offline_snapshots/index.json (small metadata only)
+ */
 class OfflineSnapshotStore(context: Context) {
-    private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private val rootDir: File = File(appContext.filesDir, SNAPSHOT_DIR).also { it.mkdirs() }
+    private val rootDir = File(context.applicationContext.filesDir, DIR_NAME).apply { mkdirs() }
+    private val indexFile = File(rootDir, INDEX_FILE)
 
-    /**
-     * Persist a new snapshot. Document count is hard-capped at [HARD_CAP].
-     * [limit] defaults to [DEFAULT_LIMIT] and is clamped into `1..HARD_CAP`.
-     */
     fun save(
         name: String? = null,
         connectionId: String,
@@ -49,42 +41,24 @@ class OfflineSnapshotStore(context: Context) {
         createdAtMillis: Long = System.currentTimeMillis(),
         snapshotId: String = UUID.randomUUID().toString(),
     ): OfflineSnapshotMeta {
-        require(connectionId.isNotBlank()) { "connectionId 不能为空" }
-        require(database.isNotBlank()) { "database 不能为空" }
-        require(collection.isNotBlank()) { "collection 不能为空" }
-        require(snapshotId.isNotBlank()) { "snapshotId 不能为空" }
-
-        val safeLimit = clampLimit(limit)
+        val cappedLimit = clampLimit(limit)
         val cappedDocs = validateAndCapDocuments(documents)
-        val finalName = name?.trim()?.takeIf { it.isNotEmpty() }
-            ?: defaultName(database, collection, createdAtMillis)
-
+        val toStore = if (cappedDocs.size > cappedLimit) cappedDocs.take(cappedLimit) else cappedDocs
         val meta = OfflineSnapshotMeta(
             snapshotId = snapshotId,
-            name = finalName,
+            name = name?.trim()?.takeIf { it.isNotEmpty() } ?: defaultName(database, collection, createdAtMillis),
             connectionId = connectionId,
             database = database,
             collection = collection,
             filterJson = filterJson.ifBlank { "{}" },
-            limit = safeLimit,
+            limit = cappedLimit,
             createdAtMillis = createdAtMillis,
-            documentCount = cappedDocs.size,
+            documentCount = toStore.size,
         )
-
-        val target = documentFile(meta.snapshotId)
-        try {
-            writeJsonl(target, cappedDocs)
-        } catch (e: Exception) {
-            target.delete()
-            throw IOException("写入离线快照失败: ${e.message}", e)
-        }
-
-        try {
-            upsertMeta(meta)
-        } catch (e: Exception) {
-            target.delete()
-            throw IOException("写入离线快照索引失败: ${e.message}", e)
-        }
+        File(rootDir, documentFileName(snapshotId)).writeText(toStore.joinToString("\n"), Charsets.UTF_8)
+        val all = listAll().filterNot { it.snapshotId == snapshotId }.toMutableList()
+        all.add(0, meta)
+        writeIndex(all)
         return meta
     }
 
@@ -93,86 +67,104 @@ class OfflineSnapshotStore(context: Context) {
         database: String? = null,
         collection: String? = null,
     ): List<OfflineSnapshotMeta> {
-        return loadAllMeta()
-            .asSequence()
-            .filter { connectionId == null || it.connectionId == connectionId }
-            .filter { database == null || it.database == database }
-            .filter { collection == null || it.collection == collection }
-            .sortedByDescending { it.createdAtMillis }
-            .toList()
+        return listAll().filter { meta ->
+            (connectionId == null || meta.connectionId == connectionId) &&
+                (database == null || meta.database == database) &&
+                (collection == null || meta.collection == collection)
+        }
     }
 
     fun loadDocuments(snapshotId: String): List<String> {
-        require(snapshotId.isNotBlank()) { "snapshotId 不能为空" }
-        val file = documentFile(snapshotId)
+        val file = File(rootDir, documentFileName(snapshotId))
         if (!file.exists()) {
-            throw IOException("离线快照文件不存在: $snapshotId")
+            throw IllegalArgumentException("快照不存在或文档文件缺失")
         }
-        return try {
-            file.readLines(Charsets.UTF_8).filter { it.isNotBlank() }
-        } catch (e: Exception) {
-            throw IOException("读取离线快照失败: ${e.message}", e)
-        }
+        val text = file.readText(Charsets.UTF_8)
+        if (text.isBlank()) return emptyList()
+        return text.split('\n').filter { it.isNotBlank() }
     }
 
     fun delete(snapshotId: String) {
-        require(snapshotId.isNotBlank()) { "snapshotId 不能为空" }
-        documentFile(snapshotId).delete()
-        val remaining = loadAllMeta().filterNot { it.snapshotId == snapshotId }
-        writeAllMeta(remaining)
+        File(rootDir, documentFileName(snapshotId)).delete()
+        writeIndex(listAll().filterNot { it.snapshotId == snapshotId })
     }
 
     fun rename(snapshotId: String, newName: String): OfflineSnapshotMeta {
-        require(snapshotId.isNotBlank()) { "snapshotId 不能为空" }
-        val trimmed = newName.trim()
-        require(trimmed.isNotEmpty()) { "快照名称不能为空" }
-        val current = loadAllMeta()
-        val index = current.indexOfFirst { it.snapshotId == snapshotId }
-        if (index < 0) {
-            throw IllegalArgumentException("找不到离线快照: $snapshotId")
+        val name = newName.trim()
+        if (name.isEmpty()) throw IllegalArgumentException("快照名称不能为空")
+        var updated: OfflineSnapshotMeta? = null
+        val next = listAll().map {
+            if (it.snapshotId == snapshotId) {
+                it.copy(name = name).also { meta -> updated = meta }
+            } else {
+                it
+            }
         }
-        val updated = current[index].copy(name = trimmed)
-        val next = current.toMutableList().also { it[index] = updated }
-        writeAllMeta(next)
-        return updated
+        if (updated == null) throw IllegalArgumentException("快照不存在")
+        writeIndex(next)
+        return updated!!
     }
 
-    private fun documentFile(snapshotId: String): File = File(rootDir, documentFileName(snapshotId))
-
-    private fun upsertMeta(meta: OfflineSnapshotMeta) {
-        val next = loadAllMeta().filterNot { it.snapshotId == meta.snapshotId } + meta
-        writeAllMeta(next)
+    private fun listAll(): List<OfflineSnapshotMeta> {
+        if (!indexFile.exists()) return emptyList()
+        val raw = indexFile.readText(Charsets.UTF_8)
+        if (raw.isBlank()) return emptyList()
+        val array = runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+        val out = ArrayList<OfflineSnapshotMeta>(array.length())
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            out.add(
+                OfflineSnapshotMeta(
+                    snapshotId = obj.optString("snapshotId"),
+                    name = obj.optString("name"),
+                    connectionId = obj.optString("connectionId"),
+                    database = obj.optString("database"),
+                    collection = obj.optString("collection"),
+                    filterJson = obj.optString("filterJson", "{}"),
+                    limit = obj.optInt("limit", DEFAULT_LIMIT),
+                    createdAtMillis = obj.optLong("createdAtMillis", 0L),
+                    documentCount = obj.optInt("documentCount", 0),
+                ),
+            )
+        }
+        return out
     }
 
-    private fun loadAllMeta(): List<OfflineSnapshotMeta> {
-        val raw = prefs.getString(KEY_INDEX, null) ?: return emptyList()
-        return runCatching { parseIndex(raw) }.getOrDefault(emptyList())
-    }
-
-    private fun writeAllMeta(items: List<OfflineSnapshotMeta>) {
+    private fun writeIndex(items: List<OfflineSnapshotMeta>) {
         val array = JSONArray()
-        items.forEach { array.put(toJson(it)) }
-        prefs.edit { putString(KEY_INDEX, array.toString()) }
+        items.forEach { meta ->
+            array.put(
+                JSONObject()
+                    .put("snapshotId", meta.snapshotId)
+                    .put("name", meta.name)
+                    .put("connectionId", meta.connectionId)
+                    .put("database", meta.database)
+                    .put("collection", meta.collection)
+                    .put("filterJson", meta.filterJson)
+                    .put("limit", meta.limit)
+                    .put("createdAtMillis", meta.createdAtMillis)
+                    .put("documentCount", meta.documentCount),
+            )
+        }
+        indexFile.writeText(array.toString(), Charsets.UTF_8)
     }
 
     companion object {
-        const val PREFS = "clens_offline_snapshots"
-        const val KEY_INDEX = "index"
-        const val SNAPSHOT_DIR = "offline_snapshots"
+        const val DIR_NAME = "offline_snapshots"
+        const val INDEX_FILE = "index.json"
         const val DEFAULT_LIMIT = 100
         const val HARD_CAP = 500
 
         fun clampLimit(limit: Int): Int {
-            if (limit < 1) return DEFAULT_LIMIT
+            if (limit <= 0) return DEFAULT_LIMIT
             return limit.coerceAtMost(HARD_CAP)
         }
 
-        /**
-         * Reject oversized payloads with a clear message; otherwise return the capped list.
-         */
-        fun validateAndCapDocuments(documents: List<String>, hardCap: Int = HARD_CAP): List<String> {
-            if (documents.size > hardCap) {
-                throw IllegalArgumentException("文档数量超过上限 $hardCap（当前 ${documents.size}）")
+        fun validateAndCapDocuments(documents: List<String>): List<String> {
+            if (documents.size > HARD_CAP) {
+                throw IllegalArgumentException(
+                    "快照文档数 ${documents.size} 超过硬上限 $HARD_CAP，请降低 limit 后重试",
+                )
             }
             return documents
         }
@@ -180,67 +172,15 @@ class OfflineSnapshotStore(context: Context) {
         fun defaultName(
             database: String,
             collection: String,
-            createdAtMillis: Long,
+            createdAtMillis: Long = System.currentTimeMillis(),
             locale: Locale = Locale.getDefault(),
         ): String {
-            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", locale).format(Date(createdAtMillis))
-            return "$database.$collection $stamp"
+            val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", locale)
+            return database + "." + collection + " " + fmt.format(Date(createdAtMillis))
         }
 
         fun documentFileName(snapshotId: String): String = "$snapshotId.jsonl"
 
-        fun documentRelativePath(snapshotId: String): String =
-            "$SNAPSHOT_DIR/${documentFileName(snapshotId)}"
-
-        private fun toJson(meta: OfflineSnapshotMeta): JSONObject {
-            return JSONObject()
-                .put("snapshotId", meta.snapshotId)
-                .put("name", meta.name)
-                .put("connectionId", meta.connectionId)
-                .put("database", meta.database)
-                .put("collection", meta.collection)
-                .put("filterJson", meta.filterJson)
-                .put("limit", meta.limit)
-                .put("createdAtMillis", meta.createdAtMillis)
-                .put("documentCount", meta.documentCount)
-        }
-
-        private fun parseIndex(raw: String): List<OfflineSnapshotMeta> {
-            val array = JSONArray(raw)
-            val out = ArrayList<OfflineSnapshotMeta>(array.length())
-            for (i in 0 until array.length()) {
-                val obj = array.optJSONObject(i) ?: continue
-                val id = obj.optString("snapshotId").orEmpty()
-                if (id.isBlank()) continue
-                out += OfflineSnapshotMeta(
-                    snapshotId = id,
-                    name = obj.optString("name", id),
-                    connectionId = obj.optString("connectionId"),
-                    database = obj.optString("database"),
-                    collection = obj.optString("collection"),
-                    filterJson = obj.optString("filterJson", "{}").ifBlank { "{}" },
-                    limit = obj.optInt("limit", DEFAULT_LIMIT),
-                    createdAtMillis = obj.optLong("createdAtMillis", 0L),
-                    documentCount = obj.optInt("documentCount", 0),
-                )
-            }
-            return out
-        }
-
-        private fun writeJsonl(file: File, documents: List<String>) {
-            file.parentFile?.mkdirs()
-            file.bufferedWriter(Charsets.UTF_8).use { writer ->
-                documents.forEachIndexed { index, line ->
-                    // Store each document as a single JSONL row (caller supplies JSON text).
-                    writer.append(line.replace("\r\n", "\n").replace('\n', ' ').trim())
-                    if (index < documents.lastIndex) {
-                        writer.append('\n')
-                    }
-                }
-                if (documents.isNotEmpty()) {
-                    writer.append('\n')
-                }
-            }
-        }
+        fun documentRelativePath(snapshotId: String): String = "$DIR_NAME/${documentFileName(snapshotId)}"
     }
 }

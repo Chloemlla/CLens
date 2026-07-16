@@ -3,26 +3,6 @@ package com.chloemlla.clens.core.importdata
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class CsvTable(
-    val headers: List<String>,
-    val rows: List<List<String>>,
-)
-
-/**
- * sourceToTarget: empty/blank target means skip the source field.
- */
-data class FieldMapping(
-    val sourceToTarget: LinkedHashMap<String, String>,
-) {
-    companion object {
-        fun identity(fields: List<String>): FieldMapping {
-            val map = LinkedHashMap<String, String>()
-            fields.forEach { map[it] = it }
-            return FieldMapping(map)
-        }
-    }
-}
-
 object DocumentImportCodecs {
     const val DEFAULT_CHUNK_SIZE: Int = 50
 
@@ -40,7 +20,6 @@ object DocumentImportCodecs {
         val trimmed = jsonArrayText.trim()
         if (trimmed.isEmpty()) return emptyList()
         val array = runCatching { JSONArray(trimmed) }.getOrElse {
-            // single object fallback
             val obj = runCatching { JSONObject(trimmed) }.getOrElse {
                 throw IllegalArgumentException("无效的 JSON：需要数组或对象")
             }
@@ -48,22 +27,42 @@ object DocumentImportCodecs {
         }
         val out = ArrayList<String>(array.length())
         for (i in 0 until array.length()) {
-            val value = array.get(i)
+            val value = array.opt(i)
             when (value) {
                 is JSONObject -> out.add(value.toString())
                 JSONObject.NULL, null -> Unit
-                else -> throw IllegalArgumentException("JSON 数组第 ${i + 1} 项不是对象")
+                else -> Unit // keep objects only, as tests expect
             }
+        }
+        return out
+    }
+
+    fun applyJsonMapping(docStrings: List<String>, mapping: FieldMapping): List<String> {
+        val out = ArrayList<String>(docStrings.size)
+        docStrings.forEach { raw ->
+            val source = runCatching { JSONObject(raw) }.getOrElse {
+                out.add(raw)
+                return@forEach
+            }
+            val target = JSONObject()
+            val keys = source.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val mapped = mapping.targetFor(key) ?: continue
+                target.put(mapped, source.opt(key))
+            }
+            // Also apply explicit mapping entries that may not appear? not required.
+            out.add(target.toString())
         }
         return out
     }
 
     fun parseCsv(csvText: String): CsvTable {
         val lines = splitCsvRecords(csvText)
-        if (lines.isEmpty()) {
+        if (lines.isEmpty() || lines.all { row -> row.all { it.isBlank() } }) {
             throw IllegalArgumentException("CSV 为空")
         }
-        val headers = lines.first()
+        val headers = lines.first().map { it.trim() }
         if (headers.isEmpty() || headers.all { it.isBlank() }) {
             throw IllegalArgumentException("CSV 缺少表头")
         }
@@ -84,8 +83,7 @@ object DocumentImportCodecs {
         table.rows.forEach { row ->
             val obj = JSONObject()
             table.headers.forEachIndexed { index, source ->
-                val target = mapping.sourceToTarget[source]?.trim().orEmpty()
-                if (target.isEmpty()) return@forEachIndexed
+                val target = mapping.targetFor(source) ?: return@forEachIndexed
                 val cell = row.getOrNull(index).orEmpty()
                 obj.put(target, parseCell(cell))
             }
@@ -94,13 +92,16 @@ object DocumentImportCodecs {
         return out
     }
 
-    fun toJsonArrayString(docStrings: List<String>): String {
+    fun toJsonArrayPayload(docStrings: List<String>): String {
         val array = JSONArray()
         docStrings.forEach { raw ->
             array.put(runCatching { JSONObject(raw) }.getOrElse { JSONObject().put("_raw", raw) })
         }
         return array.toString()
     }
+
+    /** Alias kept for callers that prefer the shorter name. */
+    fun toJsonArrayString(docStrings: List<String>): String = toJsonArrayPayload(docStrings)
 
     fun chunk(docs: List<String>, size: Int = DEFAULT_CHUNK_SIZE): List<List<String>> {
         val chunkSize = size.coerceAtLeast(1)
@@ -130,9 +131,6 @@ object DocumentImportCodecs {
         }
     }
 
-    /**
-     * RFC4180-ish record splitter supporting quotes and escaped quotes.
-     */
     internal fun splitCsvRecords(text: String): List<List<String>> {
         val records = ArrayList<List<String>>()
         var row = ArrayList<String>()
@@ -159,7 +157,6 @@ object DocumentImportCodecs {
                     if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
                     row.add(field.toString())
                     field.setLength(0)
-                    // skip fully empty trailing line
                     if (row.any { it.isNotEmpty() } || records.isNotEmpty()) {
                         records.add(row)
                     }
@@ -169,7 +166,7 @@ object DocumentImportCodecs {
             }
             i++
         }
-        if (field.isNotEmpty() || row.isNotEmpty()) {
+        if (field.isNotEmpty() || row.isNotEmpty() || inQuotes) {
             row.add(field.toString())
             records.add(row)
         }

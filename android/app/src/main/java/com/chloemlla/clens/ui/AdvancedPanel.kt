@@ -1,10 +1,16 @@
 package com.chloemlla.clens.ui
 
 import android.widget.Toast
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.chloemlla.clens.core.export.DocumentExportFormat
+import java.io.File
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -165,15 +171,44 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
 
         // Import/export
-        SectionTitle(text = "导入 / 导出", subtitle = "导入 JSON 数组；导出受 limit 限制。")
+        SectionTitle(text = "导入 / 导出", subtitle = "文件导入映射 + 多格式导出分享；失败写入待提交队列。")
         FlagRow("导入前删除集合", state.importDropBefore, !state.loading, viewModel::setImportDropBefore)
+        val importLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenDocument(),
+        ) { uri: Uri? ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "import.bin"
+            val text = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            }.getOrNull()
+            if (text.isNullOrBlank()) {
+                Toast.makeText(context, "无法读取所选文件", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.prepareImportFromText(name, text)
+            }
+        }
+        ActionRow {
+            OutlinedButton(
+                onClick = { importLauncher.launch(arrayOf("application/json", "text/csv", "text/*", "*/*")) },
+                enabled = !state.loading,
+            ) { Text("选择 JSON/CSV 文件") }
+            Button(
+                onClick = viewModel::requestImport,
+                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
+            ) { Text("导入到当前集合") }
+        }
+        if (state.importSourceName.isNotBlank()) {
+            InfoCard(
+                title = "导入源: " + state.importSourceName,
+                lines = listOf(
+                    "字段预览: " + state.importMappingPreview.joinToString(", ").ifBlank { "-" },
+                    "CSV 字段默认按表头映射；可先在下方检查 JSON 再导入。",
+                ),
+            )
+        }
         JsonField("导入 JSON 数组", state.importJson, !state.loading, minLines = 6) {
             viewModel.updateText(ClensViewModel.Field.ImportJson, it)
         }
-        Button(
-            onClick = viewModel::requestImport,
-            enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
-        ) { Text("导入到当前集合") }
         OutlinedTextField(
             value = state.exportLimit,
             onValueChange = { viewModel.updateText(ClensViewModel.Field.ExportLimit, it) },
@@ -183,8 +218,18 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
             enabled = !state.loading,
         )
         ActionRow {
+            OutlinedButton(onClick = { viewModel.setExportFormat(DocumentExportFormat.JSON) }, enabled = !state.loading) { Text("格式 JSON") }
+            OutlinedButton(onClick = { viewModel.setExportFormat(DocumentExportFormat.CSV) }, enabled = !state.loading) { Text("格式 CSV") }
+            OutlinedButton(onClick = { viewModel.setExportFormat(DocumentExportFormat.EXTENDED_JSON_LINES) }, enabled = !state.loading) { Text("格式 JSONL") }
+        }
+        Text(
+            text = "当前导出格式: " + state.exportFormat.name,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ActionRow {
             OutlinedButton(
-                onClick = viewModel::exportCollection,
+                onClick = viewModel::exportCollectionAsFile,
                 enabled = !state.loading && state.selectedCollection.isNotBlank(),
             ) { Text("导出当前集合") }
             OutlinedButton(
@@ -192,14 +237,45 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     if (state.exportJson.isBlank()) {
                         Toast.makeText(context, "没有可分享的导出内容", Toast.LENGTH_SHORT).show()
                     } else {
-                        shareText(context, "CLens export", state.exportJson)
+                        runCatching {
+                            val dir = File(context.cacheDir, "export").apply { mkdirs() }
+                            val file = File(dir, "clens-export." + state.exportFormat.extension)
+                            file.writeText(state.exportJson, Charsets.UTF_8)
+                            shareFile(context, "CLens export", file, state.exportFormat.mimeType)
+                        }.onFailure {
+                            shareText(context, "CLens export", state.exportJson)
+                        }
                     }
                 },
                 enabled = state.exportJson.isNotBlank(),
-            ) { Text("分享导出 JSON") }
+            ) { Text("分享导出文件") }
         }
         if (state.exportJson.isNotBlank()) {
-            JsonField("导出结果", state.exportJson, enabled = false, minLines = 8) {}
+            JsonField("导出结果预览", state.exportJson, enabled = false, minLines = 6) {}
+        }
+
+        SectionTitle(text = "待提交队列", subtitle = "写失败/导入失败后自动入队；网络恢复可同步。")
+        ActionRow {
+            OutlinedButton(onClick = viewModel::refreshStagingQueue, enabled = !state.loading) { Text("刷新队列") }
+            Button(onClick = viewModel::processStagingQueue, enabled = !state.loading && state.stagingItems.isNotEmpty()) { Text("同步队列") }
+        }
+        if (state.stagingItems.isEmpty()) {
+            InfoCard(title = "队列为空", lines = listOf("弱网插入/替换/导入失败会进入这里。"))
+        } else {
+            state.stagingItems.take(30).forEach { item ->
+                InfoCard(
+                    title = item.type.name + " · " + item.status.name,
+                    lines = listOf(
+                        item.database + "." + item.collection,
+                        "attempts=" + item.attemptCount + " chunk=" + item.chunkIndex + "/" + item.chunkCount,
+                        item.lastError ?: "-",
+                    ),
+                )
+                ActionRow {
+                    OutlinedButton(onClick = { viewModel.retryStagingItem(item.id) }, enabled = !state.loading) { Text("重试") }
+                    OutlinedButton(onClick = { viewModel.discardStagingItem(item.id) }, enabled = !state.loading) { Text("丢弃") }
+                }
+            }
         }
 
         SectionTitle(text = "本地审计日志", subtitle = "仅记录本机危险操作，最多 100 条。")
@@ -223,3 +299,5 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
     }
 }
+
+

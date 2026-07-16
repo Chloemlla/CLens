@@ -9,6 +9,9 @@ import com.chloemlla.clens.core.mongo.MongoSessionManager
 import com.chloemlla.clens.core.storage.MongoConnectionStore
 import com.chloemlla.clens.core.storage.LocalAppStore
 import com.chloemlla.clens.core.storage.DocumentDraftStore
+import com.chloemlla.clens.core.storage.OfflineSnapshotStore
+import com.chloemlla.clens.core.storage.StagingQueueStore
+import com.chloemlla.clens.core.export.DocumentExportFormat
 import com.chloemlla.clens.core.storage.SecurityPrefsStore
 import com.chloemlla.clens.core.storage.ThemeMode
 import com.chloemlla.clens.ui.editor.DocValueType
@@ -23,6 +26,8 @@ class ClensViewModel(
     connectionStore: MongoConnectionStore,
     private val localStore: LocalAppStore,
     private val draftStore: DocumentDraftStore,
+    private val snapshotStore: OfflineSnapshotStore,
+    private val stagingStore: StagingQueueStore,
     private val securityPrefs: SecurityPrefsStore,
     sessionManager: MongoSessionManager,
     repository: MongoAdminRepository,
@@ -36,6 +41,8 @@ class ClensViewModel(
         connectionStore = connectionStore,
         localStore = localStore,
         draftStore = draftStore,
+        snapshotStore = snapshotStore,
+        stagingStore = stagingStore,
         sessionManager = sessionManager,
         repository = repository,
         actions = actions,
@@ -62,7 +69,19 @@ class ClensViewModel(
         _state.update { it.copy(selectedTab = tab) }
         when (tab) {
             ClensTab.Browse -> if (_state.value.isConnected && _state.value.databases.isEmpty()) browse.refreshDatabases()
-            ClensTab.Admin -> if (_state.value.isConnected) admin.refreshServerOverview()
+            ClensTab.Query -> {
+                if (_state.value.isConnected &&
+                    _state.value.selectedCollection.isNotBlank() &&
+                    _state.value.indexes.isEmpty() &&
+                    !_state.value.isSelectedView
+                ) {
+                    admin.refreshIndexes()
+                }
+            }
+            ClensTab.Admin -> if (_state.value.isConnected) {
+                admin.refreshServerOverview()
+                admin.refreshCurrentOps()
+            }
             ClensTab.Advanced -> if (_state.value.isConnected) {
                 // no-op auto load; user triggers refresh actions
             }
@@ -128,6 +147,12 @@ class ClensViewModel(
     fun runQuery(withExplain: Boolean = false) = query.runQuery(withExplain)
     fun explainAggregate() = query.explainAggregate()
     fun setQueryVisualMode(enabled: Boolean) = query.setQueryVisualMode(enabled)
+    fun setQueryInputMode(mode: QueryInputMode) = query.setQueryInputMode(mode)
+    fun updateSqlInput(value: String) = query.updateSqlInput(value)
+    fun translateSql() {
+        query.translateSql(showStatus = true)
+    }
+    fun runSqlQuery() = query.runSqlQuery()
     fun updateVisualClause(index: Int, clause: VisualFilterClause) = query.updateVisualClause(index, clause)
     fun addVisualClause() = query.addVisualClause()
     fun removeVisualClause(index: Int) = query.removeVisualClause(index)
@@ -205,6 +230,20 @@ class ClensViewModel(
     fun requestImport() = advanced.requestImport()
     fun importConfirmed() = advanced.importConfirmed()
     fun exportCollection() = advanced.exportCollection()
+    fun setExportFormat(format: DocumentExportFormat) = advanced.setExportFormat(format)
+    fun exportCollectionAsFile() = advanced.exportCollectionAsFile()
+    fun prepareImportFromText(fileName: String, text: String) = advanced.prepareImportFromText(fileName, text)
+    fun confirmMappedImport() = advanced.confirmMappedImport()
+    fun refreshStagingQueue() = advanced.refreshStagingQueue()
+    fun retryStagingItem(id: String) = advanced.retryStagingItem(id)
+    fun discardStagingItem(id: String) = advanced.discardStagingItem(id)
+    fun processStagingQueue() = advanced.processStagingQueue()
+    fun saveOfflineSnapshot() = browse.saveOfflineSnapshot()
+    fun refreshOfflineSnapshots() = browse.refreshOfflineSnapshots()
+    fun openOfflineSnapshot(id: String) = browse.openOfflineSnapshot(id)
+    fun deleteOfflineSnapshot(id: String) = browse.deleteOfflineSnapshot(id)
+    fun clearActiveOfflineSnapshot() = browse.clearActiveOfflineSnapshot()
+    fun exportCurrentPage(format: DocumentExportFormat) = browse.exportCurrentPage(format)
     fun restoreQueryHistory(id: String) = query.restoreQueryHistory(id)
     fun refreshQueryHistory() = query.refreshQueryHistory()
     fun refreshCurrentOps() = admin.refreshCurrentOps()
@@ -231,7 +270,14 @@ class ClensViewModel(
     fun clearAuditLog() = advanced.clearAuditLog()
 
 
-    fun onAppForeground() = sessionHealth.onAppForeground(viewModelScope)
+    fun onAppForeground() {
+        sessionHealth.onAppForeground(viewModelScope)
+        val queued = runCatching { stagingStore.list() }.getOrDefault(emptyList())
+        if (queued.isNotEmpty()) {
+            _state.update { it.copy(stagingItems = queued) }
+            advanced.processStagingQueue()
+        }
+    }
     fun dismissDisconnectNotice() = sessionHealth.dismissDisconnectNotice()
     fun reconnectManually() = sessionHealth.reconnectManually()
 
@@ -286,6 +332,7 @@ class ClensViewModel(
         QuerySort,
         QueryProjection,
         QueryPipeline,
+        QuerySql,
         IndexKeys,
         IndexName,
         IndexExpire,
@@ -306,20 +353,35 @@ class ClensViewModel(
         ValidationActionInput,
         DatabaseSearch,
         CollectionSearch,
+        OfflineSnapshotName,
     }
 
     class Factory(
         private val connectionStore: MongoConnectionStore,
         private val localStore: LocalAppStore,
         private val draftStore: DocumentDraftStore,
+        private val snapshotStore: OfflineSnapshotStore,
+        private val stagingStore: StagingQueueStore,
         private val securityPrefs: SecurityPrefsStore,
         private val sessionManager: MongoSessionManager,
         private val repository: MongoAdminRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ClensViewModel(connectionStore, localStore, draftStore, securityPrefs, sessionManager, repository) as T
+            return ClensViewModel(
+                connectionStore,
+                localStore,
+                draftStore,
+                snapshotStore,
+                stagingStore,
+                securityPrefs,
+                sessionManager,
+                repository,
+            ) as T
         }
     }
 }
+
+
+
 

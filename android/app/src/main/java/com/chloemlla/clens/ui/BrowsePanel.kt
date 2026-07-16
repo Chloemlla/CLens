@@ -1,6 +1,8 @@
 package com.chloemlla.clens.ui
 
 import android.widget.Toast
+import com.chloemlla.clens.core.export.DocumentExportFormat
+import java.io.File
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -330,15 +332,72 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 enabled = state.selectedDocumentJson.isNotBlank(),
             ) { Text("复制选中 JSON") }
             OutlinedButton(
-                onClick = {
-                    if (state.documents.isEmpty()) {
-                        Toast.makeText(context, "当前页没有文档可导出", Toast.LENGTH_SHORT).show()
-                    } else {
-                        shareText(context, "CLens page export", documentsToJsonArray(state.documents))
-                    }
-                },
-                enabled = state.documents.isNotEmpty(),
-            ) { Text("导出当前页") }
+                onClick = { viewModel.exportCurrentPage(DocumentExportFormat.JSON) },
+                enabled = !state.loading && state.documents.isNotEmpty(),
+            ) { Text("导出 JSON") }
+            OutlinedButton(
+                onClick = { viewModel.exportCurrentPage(DocumentExportFormat.CSV) },
+                enabled = !state.loading && state.documents.isNotEmpty(),
+            ) { Text("导出 CSV") }
+            OutlinedButton(
+                onClick = { viewModel.exportCurrentPage(DocumentExportFormat.EXTENDED_JSON_LINES) },
+                enabled = !state.loading && state.documents.isNotEmpty(),
+            ) { Text("导出 JSONL") }
+        }
+        if (state.exportJson.isNotBlank()) {
+            ActionRow {
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            val dir = File(context.cacheDir, "export").apply { mkdirs() }
+                            val ext = state.exportFormat.extension
+                            val file = File(dir, "clens-page." + ext)
+                            file.writeText(state.exportJson, Charsets.UTF_8)
+                            shareFile(context, "CLens page export", file, state.exportFormat.mimeType)
+                        }.onFailure {
+                            shareText(context, "CLens page export", state.exportJson)
+                        }
+                    },
+                ) { Text("分享导出文件") }
+            }
+        }
+
+        SectionTitle(text = "离线快照", subtitle = "保存当前 filter 前 N 条；无网可只读打开。")
+        OutlinedTextField(
+            value = state.offlineSnapshotNameInput,
+            onValueChange = { viewModel.updateText(ClensViewModel.Field.OfflineSnapshotName, it) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("快照名称（可空自动生成）") },
+            enabled = !state.loading,
+        )
+        ActionRow {
+            Button(
+                onClick = viewModel::saveOfflineSnapshot,
+                enabled = !state.loading && state.selectedCollection.isNotBlank(),
+            ) { Text("保存离线快照") }
+            OutlinedButton(onClick = viewModel::refreshOfflineSnapshots, enabled = !state.loading) { Text("刷新快照") }
+            if (state.activeSnapshotId != null) {
+                OutlinedButton(onClick = viewModel::clearActiveOfflineSnapshot) { Text("退出快照") }
+            }
+        }
+        if (state.offlineSnapshots.isEmpty()) {
+            InfoCard(title = "暂无快照", lines = listOf("加载文档后可保存命名快照，供地铁/弱网回看。"))
+        } else {
+            state.offlineSnapshots.take(20).forEach { snap ->
+                InfoCard(
+                    title = snap.name,
+                    lines = listOf(
+                        snap.database + "." + snap.collection,
+                        "filter: " + snap.filterJson,
+                        "docs=" + snap.documentCount + " limit=" + snap.limit,
+                    ),
+                )
+                ActionRow {
+                    OutlinedButton(onClick = { viewModel.openOfflineSnapshot(snap.snapshotId) }, enabled = !state.loading) { Text("打开") }
+                    OutlinedButton(onClick = { viewModel.deleteOfflineSnapshot(snap.snapshotId) }, enabled = !state.loading) { Text("删除") }
+                }
+            }
         }
 
         DocumentEditorPanel(
@@ -370,3 +429,4 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
     }
 }
+
