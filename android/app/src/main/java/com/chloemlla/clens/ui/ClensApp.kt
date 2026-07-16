@@ -34,7 +34,10 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import com.chloemlla.clens.core.mongo.LocalNetworkPermission
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +72,19 @@ fun ClensApp(
         themeCallback(state.themeMode)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onLocalNetworkPermissionResult(granted)
+    }
+    val pendingLocalNetwork = state.pendingLocalNetworkPermission
+    LaunchedEffect(pendingLocalNetwork) {
+        if (pendingLocalNetwork != null) {
+            localNetworkPermissionLauncher.launch(LocalNetworkPermission.permissionOrManifest())
+        }
+    }
+
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) {

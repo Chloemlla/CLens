@@ -137,7 +137,7 @@ class MainActivity : FragmentActivity() {
             val repository = MongoAdminRepository(sessionManager)
             ViewModelProvider(
                 this,
-                ClensViewModel.Factory(store, localStore, draftStore, snapshotStore, stagingStore, securityPrefs, sessionManager, repository),
+                ClensViewModel.Factory(applicationContext, store, localStore, draftStore, snapshotStore, stagingStore, securityPrefs, sessionManager, repository),
             )[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             Log.e(TAG, "Failed to create ClensViewModel", throwable)

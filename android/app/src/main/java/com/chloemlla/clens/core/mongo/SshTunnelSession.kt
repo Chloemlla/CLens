@@ -14,6 +14,11 @@ import net.schmizz.sshj.userauth.password.Resource
 /**
  * SSH local port-forward session for bastion access to MongoDB.
  * Supports password auth, OpenSSH PEM private keys, and PuTTY PPK2 (ssh-rsa).
+ *
+ * Android 17 loopback note:
+ * Local ServerSocket and Mongo client both run in this app process/UID.
+ * USE_LOOPBACK_INTERFACE targets cross-app loopback; same-app forward is
+ * expected to work with INTERNET alone. Re-verify on API 37 before declaring it.
  */
 class SshTunnelSession private constructor(
     val localPort: Int,

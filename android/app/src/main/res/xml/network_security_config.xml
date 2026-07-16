@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Default deny cleartext. Explicit non-TLS Mongo profiles show UI warnings; prefer TLS. -->
+<!--
+  Default deny cleartext.
+  Android 17 plans to deprecate Manifest usesCleartextTraffic; this XML is the policy source.
+  Explicit non-TLS Mongo profiles are warned in UI; Mongo wire protocol is not HTTP cleartext.
+  Certificate Transparency: follow platform default for targetSdk 37+ (do not global-disable).
+-->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>
