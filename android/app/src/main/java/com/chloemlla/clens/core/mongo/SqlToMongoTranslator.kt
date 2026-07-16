@@ -611,7 +611,7 @@ object SqlToMongoTranslator {
         while (i < andIndex) {
             val c = text[i]
             when {
-                c == ''' && !inDouble -> inSingle = !inSingle
+                c == '\'' && !inDouble -> inSingle = !inSingle
                 c == '"' && !inSingle -> inDouble = !inDouble
                 !inSingle && !inDouble && c == '(' -> depth++
                 !inSingle && !inDouble && c == ')' -> depth--
