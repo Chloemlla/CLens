@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class ClensViewModel(
+    appContext: android.content.Context,
     connectionStore: MongoConnectionStore,
     private val localStore: LocalAppStore,
     private val draftStore: DocumentDraftStore,
@@ -38,6 +39,7 @@ class ClensViewModel(
     private val actions = ClensActionRunner(viewModelScope, _state)
     private val ctx = ClensSessionContext(
         state = _state,
+        appContext = appContext.applicationContext,
         connectionStore = connectionStore,
         localStore = localStore,
         draftStore = draftStore,
@@ -124,6 +126,9 @@ class ClensViewModel(
     fun requestDropCollection() = browse.requestDropCollection()
     fun dropCollectionConfirmed() = browse.dropCollectionConfirmed()
     fun loadDocuments(resetSkip: Boolean = false) = browse.loadDocuments(resetSkip)
+    fun openBrowseTabFromCurrent() = browse.openBrowseTabFromCurrent()
+    fun switchBrowseTab(tabId: String) = browse.switchBrowseTab(tabId)
+    fun closeBrowseTab(tabId: String) = browse.closeBrowseTab(tabId)
     fun nextDocumentPage() = browse.nextDocumentPage()
     fun previousDocumentPage() = browse.previousDocumentPage()
     fun selectDocument(json: String) = browse.selectDocument(json)
@@ -286,6 +291,29 @@ class ClensViewModel(
     fun dismissDisconnectNotice() = sessionHealth.dismissDisconnectNotice()
     fun reconnectManually() = sessionHealth.reconnectManually()
 
+    fun onLocalNetworkPermissionResult(granted: Boolean) {
+        val pending = _state.value.pendingLocalNetworkPermission ?: return
+        _state.update { it.copy(pendingLocalNetworkPermission = null) }
+        if (!granted) {
+            _state.update {
+                it.copy(
+                    error = com.chloemlla.clens.core.mongo.LocalNetworkPermission.deniedMessage(),
+                    status = "",
+                )
+            }
+            return
+        }
+        when (pending.mode) {
+            LocalNetworkPermissionMode.Connect -> connect(pending.profile)
+            LocalNetworkPermissionMode.Test -> testConnection(pending.profile)
+            LocalNetworkPermissionMode.Reconnect -> reconnectManually()
+        }
+    }
+
+    fun cancelLocalNetworkPermissionRequest() {
+        _state.update { it.copy(pendingLocalNetworkPermission = null) }
+    }
+
     override fun onCleared() {
         advanced.onCleared()
         admin.stopOpsCounterSampling(keepHistory = false)
@@ -362,6 +390,7 @@ class ClensViewModel(
     }
 
     class Factory(
+        private val appContext: android.content.Context,
         private val connectionStore: MongoConnectionStore,
         private val localStore: LocalAppStore,
         private val draftStore: DocumentDraftStore,
@@ -374,6 +403,7 @@ class ClensViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return ClensViewModel(
+                appContext,
                 connectionStore,
                 localStore,
                 draftStore,

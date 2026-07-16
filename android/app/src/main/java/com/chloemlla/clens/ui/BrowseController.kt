@@ -560,6 +560,117 @@ class BrowseController(
         }
     }
 
+
+    fun openBrowseTabFromCurrent() {
+        val current = state.value
+        val title = buildBrowseTabTitle(current.selectedDatabase, current.selectedCollection)
+        val tab = captureBrowseTab(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            current = current,
+        )
+        state.update {
+            val tabs = it.browseTabs + tab
+            it.copy(
+                browseTabs = tabs,
+                activeBrowseTabId = tab.id,
+                status = "已打开浏览标签：" + title,
+            )
+        }
+    }
+
+    fun switchBrowseTab(tabId: String) {
+        val current = state.value
+        val target = current.browseTabs.firstOrNull { it.id == tabId } ?: return
+        // Save current into active tab first
+        val savedTabs = current.browseTabs.map { tab ->
+            if (tab.id == current.activeBrowseTabId) captureBrowseTab(tab.id, tab.title, current) else tab
+        }
+        state.update {
+            applyBrowseTab(
+                it.copy(browseTabs = savedTabs, activeBrowseTabId = tabId),
+                target,
+            ).copy(status = "已切换到 " + target.title)
+        }
+        if (target.selectedDatabase.isNotBlank() && target.collectionsNeedRefresh(current)) {
+            // no-op: collections list is global; documents already restored from tab snapshot
+        }
+    }
+
+    fun closeBrowseTab(tabId: String) {
+        val current = state.value
+        val remaining = current.browseTabs.filterNot { it.id == tabId }
+        if (remaining.isEmpty()) {
+            state.update {
+                it.copy(
+                    browseTabs = emptyList(),
+                    activeBrowseTabId = null,
+                    status = "已关闭浏览标签",
+                )
+            }
+            return
+        }
+        val closingActive = current.activeBrowseTabId == tabId
+        val nextActive = if (closingActive) remaining.last() else remaining.firstOrNull { it.id == current.activeBrowseTabId }
+        state.update { st ->
+            var next = st.copy(browseTabs = remaining, activeBrowseTabId = nextActive?.id)
+            if (closingActive && nextActive != null) {
+                next = applyBrowseTab(next, nextActive)
+            }
+            next.copy(status = "已关闭浏览标签")
+        }
+    }
+
+    private fun captureBrowseTab(id: String, title: String, current: ClensUiState): BrowseTab {
+        return BrowseTab(
+            id = id,
+            title = title.ifBlank { buildBrowseTabTitle(current.selectedDatabase, current.selectedCollection) },
+            selectedDatabase = current.selectedDatabase,
+            selectedCollection = current.selectedCollection,
+            browseFilterJson = current.browseFilterJson,
+            browseSortJson = current.browseSortJson,
+            browseProjectionJson = current.browseProjectionJson,
+            documentSkip = current.documentSkip,
+            documentLimit = current.documentLimit,
+            documents = current.documents,
+            documentCountHint = current.documentCountHint,
+            selectedDocumentJson = current.selectedDocumentJson,
+            editorJson = current.editorJson,
+            documentEditor = current.documentEditor,
+            resultViewMode = current.resultViewMode,
+        )
+    }
+
+    private fun applyBrowseTab(state: ClensUiState, tab: BrowseTab): ClensUiState {
+        return state.copy(
+            selectedDatabase = tab.selectedDatabase,
+            selectedCollection = tab.selectedCollection,
+            browseFilterJson = tab.browseFilterJson,
+            browseSortJson = tab.browseSortJson,
+            browseProjectionJson = tab.browseProjectionJson,
+            documentSkip = tab.documentSkip,
+            documentLimit = tab.documentLimit,
+            documents = tab.documents,
+            documentCountHint = tab.documentCountHint,
+            selectedDocumentJson = tab.selectedDocumentJson,
+            editorJson = tab.editorJson,
+            documentEditor = tab.documentEditor,
+            resultViewMode = tab.resultViewMode,
+            activeBrowseTabId = tab.id,
+        )
+    }
+
+    private fun buildBrowseTabTitle(database: String, collection: String): String {
+        return when {
+            database.isBlank() -> "未选库"
+            collection.isBlank() -> database
+            else -> database + "." + collection
+        }
+    }
+
+    private fun BrowseTab.collectionsNeedRefresh(current: ClensUiState): Boolean = false
+
+
     fun setResultViewMode(mode: ResultViewMode) {
         state.update { it.copy(resultViewMode = mode) }
     }

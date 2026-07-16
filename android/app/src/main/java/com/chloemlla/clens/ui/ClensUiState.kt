@@ -73,6 +73,25 @@ data class PendingDestructiveAction(
     val confirmMode: DestructiveConfirmMode = DestructiveConfirmMode.TypeName,
 )
 
+data class BrowseTab(
+    val id: String,
+    val title: String,
+    val selectedDatabase: String = "",
+    val selectedCollection: String = "",
+    val browseFilterJson: String = "{}",
+    val browseSortJson: String = "{\"_id\": 1}",
+    val browseProjectionJson: String = "{}",
+    val documentSkip: Int = 0,
+    val documentLimit: Int = 50,
+    val documents: List<String> = emptyList(),
+    val documentCountHint: Long? = null,
+    val selectedDocumentJson: String = "",
+    val editorJson: String = "{\n  \n}",
+    val documentEditor: com.chloemlla.clens.ui.editor.DocumentEditorState =
+        com.chloemlla.clens.ui.editor.DocumentEditorState(),
+    val resultViewMode: ResultViewMode = ResultViewMode.Json,
+)
+
 enum class ClensTab(val label: String) {
     Connections("连接"),
     Browse("浏览"),
@@ -114,6 +133,8 @@ data class ConnectionFormState(
 
 data class ClensUiState(
     val selectedTab: ClensTab = ClensTab.Connections,
+    val browseTabs: List<BrowseTab> = emptyList(),
+    val activeBrowseTabId: String? = null,
     val profiles: List<MongoConnectionProfile> = emptyList(),
     val activeProfileId: String? = null,
     val connectedProfileId: String? = null,

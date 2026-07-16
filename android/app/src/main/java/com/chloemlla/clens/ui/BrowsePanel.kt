@@ -3,7 +3,11 @@ package com.chloemlla.clens.ui
 import android.widget.Toast
 import com.chloemlla.clens.core.export.DocumentExportFormat
 import java.io.File
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,6 +49,34 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             return@PanelColumn
         }
 
+        SectionTitle(text = "浏览标签", subtitle = "多上下文切换；每个标签保留 filter/page/编辑器状态。")
+        ActionRow {
+            OutlinedButton(
+                onClick = viewModel::openBrowseTabFromCurrent,
+                enabled = !state.loading && state.selectedDatabase.isNotBlank(),
+            ) { Text("从当前打开标签") }
+        }
+        if (state.browseTabs.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                state.browseTabs.forEach { tab ->
+                    FilterChip(
+                        selected = tab.id == state.activeBrowseTabId,
+                        onClick = { viewModel.switchBrowseTab(tab.id) },
+                        enabled = !state.loading,
+                        label = { Text(tab.title) },
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.closeBrowseTab(tab.id) },
+                        enabled = !state.loading,
+                    ) { Text("×") }
+                }
+            }
+        }
         BrowseBreadcrumb(
             database = state.selectedDatabase,
             collection = state.selectedCollection,
