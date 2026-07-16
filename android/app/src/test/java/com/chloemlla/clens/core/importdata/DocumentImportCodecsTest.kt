@@ -57,11 +57,12 @@ class DocumentImportCodecsTest {
 
     @Test
     fun parseCsv_supportsQuotesCommasAndEscapedQuotes() {
-        val csv = """
-            name,note,score
-            Ada,"hello, world",10
-            "Bob ""B""",plain,20
-        """.trimIndent()
+        // Avoid raw-string triple-quote conflicts from CSV escaped quotes.
+        val csv = listOf(
+            "name,note,score",
+            "Ada,\"hello, world\",10",
+            "\"Bob \"\"B\"\"\",plain,20",
+        ).joinToString("\n")
 
         val table = DocumentImportCodecs.parseCsv(csv)
         assertEquals(listOf("name", "note", "score"), table.headers)
@@ -73,11 +74,11 @@ class DocumentImportCodecsTest {
     @Test
     fun applyCsvMapping_renamesSkipsAndParsesNestedJsonScalars() {
         val table = DocumentImportCodecs.parseCsv(
-            """
-            id,name,meta,flags,active,ratio,skipMe
-            1,Ada,"{""city"":""SH""}","[1,2]",true,1.5,secret
-            2,Bob,plain,x,false,2,hide
-            """.trimIndent(),
+            listOf(
+                "id,name,meta,flags,active,ratio,skipMe",
+                "1,Ada,\"{\"\"city\"\":\"\"SH\"\"}\",\"[1,2]\",true,1.5,secret",
+                "2,Bob,plain,x,false,2,hide",
+            ).joinToString("\n"),
         )
         val mapping = FieldMapping(
             linkedMapOf(
