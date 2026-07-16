@@ -363,7 +363,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
             )
             if (form.sshEnabled) {
                 Text(
-                    text = "通过堡垒机本地端口转发访问 Mongo。私钥仅支持 OpenSSH PEM；.ppk 请先转换。",
+                    text = "通过堡垒机本地端口转发访问 Mongo。私钥支持 OpenSSH PEM 与 PuTTY PPK2（ssh-rsa）。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -411,7 +411,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     value = form.sshPrivateKeyPem,
                     onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshPrivateKeyPem = value) } },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("SSH 私钥 PEM（可选）") },
+                    label = { Text("SSH 私钥 PEM / PPK（可选）") },
                     enabled = !state.loading,
                     minLines = 4,
                 )

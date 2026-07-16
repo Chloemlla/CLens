@@ -13,7 +13,7 @@ import net.schmizz.sshj.userauth.password.Resource
 
 /**
  * SSH local port-forward session for bastion access to MongoDB.
- * Supports password auth and OpenSSH PEM private keys. PPK is not supported.
+ * Supports password auth, OpenSSH PEM private keys, and PuTTY PPK2 (ssh-rsa).
  */
 class SshTunnelSession private constructor(
     val localPort: Int,
@@ -97,9 +97,7 @@ class SshTunnelSession private constructor(
             if (!hasPassword && !hasKey) {
                 throw MongoAdminException.Validation("请提供 SSH 密码或 PEM 私钥（二选一）。")
             }
-            if (hasKey && looksLikePpk(profile.sshPrivateKeyPem)) {
-                throw MongoAdminException.Validation("暂不支持 .ppk 私钥，请先转换为 OpenSSH PEM 格式。")
-            }
+            // PPK is converted in authenticate(); keep validate lightweight.
         }
 
         fun looksLikePpk(raw: String): Boolean {
@@ -109,12 +107,15 @@ class SshTunnelSession private constructor(
         }
 
         private fun authenticate(client: SSHClient, profile: MongoConnectionProfile, username: String) {
-            val keyPem = profile.sshPrivateKeyPem.trim()
-            if (keyPem.isNotBlank()) {
-                val passphrase = profile.sshPrivateKeyPassphrase
-                    .takeIf { it.isNotBlank() }
-                    ?.toCharArray()
-                val finder = passphrase?.let { chars ->
+            val keyMaterial = profile.sshPrivateKeyPem.trim()
+            if (keyMaterial.isNotBlank()) {
+                val passphrase = profile.sshPrivateKeyPassphrase.takeIf { it.isNotBlank() }
+                val keyPem = if (looksLikePpk(keyMaterial) || PpkKeyConverter.looksLikePpk(keyMaterial)) {
+                    PpkKeyConverter.toOpenSshPem(keyMaterial, passphrase).privateKeyPem
+                } else {
+                    keyMaterial
+                }
+                val finder = passphrase?.toCharArray()?.let { chars ->
                     object : PasswordFinder {
                         override fun reqPassword(resource: Resource<*>?): CharArray = chars.copyOf()
                         override fun shouldRetry(resource: Resource<*>?): Boolean = false
