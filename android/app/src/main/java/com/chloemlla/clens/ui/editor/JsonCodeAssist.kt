@@ -171,11 +171,23 @@ object JsonCodeAssist {
         if (trimmed.isEmpty()) return null
         return runCatching {
             when (val value = JSONTokener(trimmed).nextValue()) {
-                is JSONObject -> value.toString(2)
-                is JSONArray -> value.toString(2)
+                is JSONObject -> ensureMultilinePretty(value.toString(2), isArray = false)
+                is JSONArray -> ensureMultilinePretty(value.toString(2), isArray = true)
                 else -> null
             }
         }.getOrNull()
+    }
+
+    private fun ensureMultilinePretty(pretty: String, isArray: Boolean): String {
+        if (pretty.contains('\n')) return pretty
+        val open = if (isArray) '[' else '{'
+        val close = if (isArray) ']' else '}'
+        val body = pretty.trim().removePrefix(open.toString()).removeSuffix(close.toString()).trim()
+        return if (body.isEmpty()) {
+            "$open\n$close"
+        } else {
+            "$open\n  $body\n$close"
+        }
     }
 
     private fun applySmartIndent(oldText: String, newlineAt: Int): EditResult {
