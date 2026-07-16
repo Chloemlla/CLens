@@ -174,6 +174,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.mongodb:mongodb-driver-kotlin-coroutine:5.2.1")
     implementation("org.mongodb:bson-kotlin:5.2.1")
+    // Pure-Java SSH client for Mongo local port-forward tunnels.
+    implementation("com.hierynomus:sshj:0.38.0")
     implementation("com.chloemlla.lumen:lumen-crash:$lumenCrashSdkVersion")
     // QR import: CameraX preview + ML Kit barcode scanning
     implementation("androidx.camera:camera-camera2:1.4.1")

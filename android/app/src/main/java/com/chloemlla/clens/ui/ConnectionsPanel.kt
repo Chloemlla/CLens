@@ -354,7 +354,103 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                     onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(readOnly = checked) } },
                 )
             }
-            ActionRow {
+            
+            SwitchSettingRow(
+                label = "SSH 隧道",
+                checked = form.sshEnabled,
+                enabled = !state.loading,
+                onCheckedChange = { checked -> viewModel.updateConnectionForm { it.copy(sshEnabled = checked) } },
+            )
+            if (form.sshEnabled) {
+                Text(
+                    text = "通过堡垒机本地端口转发访问 Mongo。私钥仅支持 OpenSSH PEM；.ppk 请先转换。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ResponsiveFieldRow(
+                    first = {
+                        OutlinedTextField(
+                            value = form.sshHost,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshHost = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("SSH 主机") },
+                            enabled = !state.loading,
+                        )
+                    },
+                    second = {
+                        OutlinedTextField(
+                            value = form.sshPort,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshPort = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("SSH 端口") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !state.loading,
+                        )
+                    },
+                )
+                OutlinedTextField(
+                    value = form.sshUsername,
+                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshUsername = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("SSH 用户名") },
+                    enabled = !state.loading,
+                )
+                OutlinedTextField(
+                    value = form.sshPassword,
+                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshPassword = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("SSH 密码（可选）") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !state.loading,
+                )
+                OutlinedTextField(
+                    value = form.sshPrivateKeyPem,
+                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshPrivateKeyPem = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("SSH 私钥 PEM（可选）") },
+                    enabled = !state.loading,
+                    minLines = 4,
+                )
+                OutlinedTextField(
+                    value = form.sshPrivateKeyPassphrase,
+                    onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshPrivateKeyPassphrase = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("私钥口令（可选）") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    enabled = !state.loading,
+                )
+                ResponsiveFieldRow(
+                    first = {
+                        OutlinedTextField(
+                            value = form.sshRemoteHost,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshRemoteHost = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("远程 Mongo 主机") },
+                            placeholder = { Text("默认取连接主机 / 127.0.0.1") },
+                            enabled = !state.loading,
+                        )
+                    },
+                    second = {
+                        OutlinedTextField(
+                            value = form.sshRemotePort,
+                            onValueChange = { value -> viewModel.updateConnectionForm { it.copy(sshRemotePort = value) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("远程 Mongo 端口") },
+                            placeholder = { Text("默认 27017") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !state.loading,
+                        )
+                    },
+                )
+            }
+ActionRow {
                 Button(onClick = viewModel::saveConnection, enabled = !state.loading) {
                     Text("保存连接")
                 }

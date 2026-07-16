@@ -12,6 +12,7 @@ import org.bson.Document
 class MongoSessionManager {
     private val clientRef = AtomicReference<MongoClient?>(null)
     private val profileRef = AtomicReference<MongoConnectionProfile?>(null)
+    private val tunnelRef = AtomicReference<SshTunnelSession?>(null)
 
     val activeProfile: MongoConnectionProfile?
         get() = profileRef.get()
@@ -20,31 +21,32 @@ class MongoSessionManager {
         get() = clientRef.get() != null
 
     suspend fun connect(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
-        val uri = MongoUriBuilder.build(profile)
         ensureMongoAuthClassesLoaded()
-        val client = createClient(uri)
+        val prepared = prepareEndpoint(profile)
+        val client = createClient(prepared.uri)
         try {
             val started = System.nanoTime()
             val ping = client.getDatabase("admin").runCommand(Document("ping", 1))
             val latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
             val version = readVersion(client)
-            swapClient(client, profile)
+            swapClient(client, profile, prepared.tunnel)
             ConnectionTestResult(
                 ok = isCommandOk(ping),
                 latencyMillis = latency,
                 serverVersion = version,
-                message = "已连接 " + profile.displayTarget + (version?.let { " · MongoDB $it" } ?: ""),
+                message = buildConnectMessage(profile, prepared, version, latency, testing = false),
             )
         } catch (error: Throwable) {
             runCatching { client.close() }
+            runCatching { prepared.tunnel?.close() }
             throw wrapConnectionFailure("连接失败", error)
         }
     }
 
     suspend fun test(profile: MongoConnectionProfile): ConnectionTestResult = withContext(Dispatchers.IO) {
-        val uri = MongoUriBuilder.build(profile)
         ensureMongoAuthClassesLoaded()
-        val client = createClient(uri)
+        val prepared = prepareEndpoint(profile)
+        val client = createClient(prepared.uri)
         try {
             val started = System.nanoTime()
             client.getDatabase("admin").runCommand(Document("ping", 1))
@@ -54,12 +56,13 @@ class MongoSessionManager {
                 ok = true,
                 latencyMillis = latency,
                 serverVersion = version,
-                message = "测试成功 · ${latency}ms" + (version?.let { " · MongoDB $it" } ?: ""),
+                message = buildConnectMessage(profile, prepared, version, latency, testing = true),
             )
         } catch (error: Throwable) {
             throw wrapConnectionFailure("连接测试失败", error)
         } finally {
             runCatching { client.close() }
+            runCatching { prepared.tunnel?.close() }
         }
     }
 
@@ -70,6 +73,7 @@ class MongoSessionManager {
 
     fun disconnect() {
         clientRef.getAndSet(null)?.let { runCatching { it.close() } }
+        tunnelRef.getAndSet(null)?.let { runCatching { it.close() } }
         profileRef.set(null)
     }
 
@@ -106,9 +110,55 @@ class MongoSessionManager {
         return connect(profile)
     }
 
-    private fun swapClient(client: MongoClient, profile: MongoConnectionProfile) {
+    private fun swapClient(
+        client: MongoClient,
+        profile: MongoConnectionProfile,
+        tunnel: SshTunnelSession?,
+    ) {
         clientRef.getAndSet(client)?.let { previous -> runCatching { previous.close() } }
+        tunnelRef.getAndSet(tunnel)?.let { previous -> runCatching { previous.close() } }
         profileRef.set(profile)
+    }
+
+    private data class PreparedEndpoint(
+        val uri: String,
+        val tunnel: SshTunnelSession? = null,
+    )
+
+    private fun prepareEndpoint(profile: MongoConnectionProfile): PreparedEndpoint {
+        if (!profile.sshEnabled) {
+            return PreparedEndpoint(uri = MongoUriBuilder.build(profile))
+        }
+        SshTunnelSession.validate(profile)
+        val tunnel = SshTunnelSession.open(profile)
+        return try {
+            val uri = MongoUriBuilder.buildForLocalForward(profile, tunnel.localPort)
+            PreparedEndpoint(uri = uri, tunnel = tunnel)
+        } catch (error: Throwable) {
+            runCatching { tunnel.close() }
+            throw error
+        }
+    }
+
+    private fun buildConnectMessage(
+        profile: MongoConnectionProfile,
+        prepared: PreparedEndpoint,
+        version: String?,
+        latency: Long,
+        testing: Boolean,
+    ): String {
+        val base = if (testing) {
+            "测试成功 · ${latency}ms"
+        } else {
+            "已连接 " + profile.displayTarget
+        }
+        val ssh = if (profile.sshEnabled) {
+            " · SSH " + profile.sshHost.trim() + " → 127.0.0.1:" + (prepared.tunnel?.localPort ?: "?")
+        } else {
+            ""
+        }
+        val ver = version?.let { " · MongoDB $it" }.orEmpty()
+        return base + ssh + ver
     }
 
     private fun createClient(uri: String): MongoClient {

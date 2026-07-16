@@ -16,15 +16,31 @@ data class MongoConnectionProfile(
     val tls: Boolean = false,
     val directConnection: Boolean = true,
     val readOnly: Boolean = false,
+    val sshEnabled: Boolean = false,
+    val sshHost: String = "",
+    val sshPort: Int = 22,
+    val sshUsername: String = "",
+    val sshPassword: String = "",
+    val sshPrivateKeyPem: String = "",
+    val sshPrivateKeyPassphrase: String = "",
+    val sshRemoteHost: String = "",
+    val sshRemotePort: Int = 0,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {
     val displayTarget: String
-        get() = if (uri.isNotBlank()) {
-            MongoUriBuilder.maskUri(uri)
-        } else {
-            val auth = username.takeIf { it.isNotBlank() }?.let { "$it@" }.orEmpty()
-            "$auth$host:$port"
+        get() {
+            val base = if (uri.isNotBlank()) {
+                MongoUriBuilder.maskUri(uri)
+            } else {
+                val auth = username.takeIf { it.isNotBlank() }?.let { "$it@" }.orEmpty()
+                "$auth$host:$port"
+            }
+            return if (sshEnabled && sshHost.isNotBlank()) {
+                base + " via SSH " + sshHost + ":" + sshPort
+            } else {
+                base
+            }
         }
 }
 

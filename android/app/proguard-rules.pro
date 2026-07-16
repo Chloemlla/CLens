@@ -137,3 +137,15 @@
 # Package-level exemption (safe default for third-party hosts)
 -keep class com.chloemlla.lumen.crash.** { *; }
 -dontwarn com.chloemlla.lumen.crash.**
+
+# -----------------------------------------------------------------------------
+# SSHJ (Mongo SSH tunnel / local port forward)
+# -----------------------------------------------------------------------------
+
+-keep class net.schmizz.sshj.** { *; }
+-keep class com.hierynomus.sshj.** { *; }
+-dontwarn net.schmizz.sshj.**
+-dontwarn com.hierynomus.sshj.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.ietf.jgss.**
+

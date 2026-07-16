@@ -89,6 +89,15 @@ class MongoConnectionStore(
                     put("tls", profile.tls)
                     put("directConnection", profile.directConnection)
                     put("readOnly", profile.readOnly)
+                    put("sshEnabled", profile.sshEnabled)
+                    put("sshHost", profile.sshHost)
+                    put("sshPort", profile.sshPort)
+                    put("sshUsername", profile.sshUsername)
+                    put("sshPassword", profile.sshPassword)
+                    put("sshPrivateKeyPem", profile.sshPrivateKeyPem)
+                    put("sshPrivateKeyPassphrase", profile.sshPrivateKeyPassphrase)
+                    put("sshRemoteHost", profile.sshRemoteHost)
+                    put("sshRemotePort", profile.sshRemotePort)
                     put("createdAtMillis", profile.createdAtMillis)
                     put("updatedAtMillis", profile.updatedAtMillis)
                 },
@@ -117,6 +126,15 @@ class MongoConnectionStore(
                         tls = item.optBoolean("tls", false),
                         directConnection = item.optBoolean("directConnection", true),
                         readOnly = item.optBoolean("readOnly", false),
+                        sshEnabled = item.optBoolean("sshEnabled", false),
+                        sshHost = item.optString("sshHost"),
+                        sshPort = item.optInt("sshPort", 22),
+                        sshUsername = item.optString("sshUsername"),
+                        sshPassword = item.optString("sshPassword"),
+                        sshPrivateKeyPem = item.optString("sshPrivateKeyPem"),
+                        sshPrivateKeyPassphrase = item.optString("sshPrivateKeyPassphrase"),
+                        sshRemoteHost = item.optString("sshRemoteHost"),
+                        sshRemotePort = item.optInt("sshRemotePort", 0),
                         createdAtMillis = item.optLong("createdAtMillis", System.currentTimeMillis()),
                         updatedAtMillis = item.optLong("updatedAtMillis", System.currentTimeMillis()),
                     ),

@@ -37,6 +37,86 @@ object MongoUriBuilder {
         return "mongodb://$credentials$host:${profile.port}$pathDb?$query"
     }
 
+
+    /**
+     * Build a Mongo URI that targets an SSH local forward endpoint.
+     * Credentials / db / tls options are preserved; host becomes 127.0.0.1:localPort.
+     */
+    fun buildForLocalForward(profile: MongoConnectionProfile, localPort: Int): String {
+        if (localPort !in 1..65535) {
+            throw MongoAdminException.Validation("本地转发端口无效。")
+        }
+        val base = if (profile.uri.isNotBlank()) {
+            validateDirectUri(profile.uri.trim())
+        } else {
+            build(profile.copy(sshEnabled = false))
+        }
+        return rewriteToLocalForward(base, localPort)
+    }
+
+    fun rewriteToLocalForward(uri: String, localPort: Int): String {
+        val trimmed = validateDirectUri(uri)
+        val lower = trimmed.lowercase()
+        if (lower.startsWith("mongodb+srv://")) {
+            // SRV cannot target localhost port-forward; convert scheme and drop SRV-only assumptions.
+            val rest = trimmed.substring("mongodb+srv://".length)
+            val withHost = rewriteAuthorityToLocalhost(rest, localPort, forceDirect = true)
+            return "mongodb://$withHost"
+        }
+        val rest = trimmed.substring("mongodb://".length)
+        return "mongodb://" + rewriteAuthorityToLocalhost(rest, localPort, forceDirect = true)
+    }
+
+    private fun rewriteAuthorityToLocalhost(rest: String, localPort: Int, forceDirect: Boolean): String {
+        val at = rest.lastIndexOf('@')
+        val creds = if (at >= 0) rest.substring(0, at + 1) else ""
+        val hostAndAfter = if (at >= 0) rest.substring(at + 1) else rest
+        val slash = hostAndAfter.indexOf('/')
+        val qmark = hostAndAfter.indexOf('?')
+        val hostEnd = when {
+            slash >= 0 && qmark >= 0 -> minOf(slash, qmark)
+            slash >= 0 -> slash
+            qmark >= 0 -> qmark
+            else -> hostAndAfter.length
+        }
+        val pathAndQuery = hostAndAfter.substring(hostEnd)
+        val queryIndex = pathAndQuery.indexOf('?')
+        val path = if (queryIndex >= 0) pathAndQuery.substring(0, queryIndex) else pathAndQuery
+        val query = if (queryIndex >= 0) pathAndQuery.substring(queryIndex + 1) else ""
+        val params = linkedMapOf<String, String>()
+        if (query.isNotBlank()) {
+            query.split('&').forEach { part ->
+                if (part.isBlank()) return@forEach
+                val eq = part.indexOf('=')
+                if (eq <= 0) {
+                    params[part] = ""
+                } else {
+                    params[part.substring(0, eq)] = part.substring(eq + 1)
+                }
+            }
+        }
+        // Avoid SRV/replica discovery against localhost forward.
+        // Local forward is a single endpoint; drop replica-set discovery and force direct.
+        val removeKeys = params.keys.filter {
+            it.equals("replicaSet", ignoreCase = true) || it.equals("directConnection", ignoreCase = true)
+        }
+        removeKeys.forEach { params.remove(it) }
+        if (forceDirect) {
+            params["directConnection"] = "true"
+        }
+        // Keep tls as-is (may still be required by server behind tunnel).
+        val queryOut = params.entries.joinToString("&") { (k, v) ->
+            if (v.isEmpty()) k else "$k=$v"
+        }
+        val suffix = buildString {
+            append(path.ifBlank { "" })
+            if (queryOut.isNotBlank()) {
+                append('?').append(queryOut)
+            }
+        }
+        return creds + "127.0.0.1:" + localPort + suffix
+    }
+
     fun maskUri(uri: String): String {
         return uri.replace(
             Regex("""(mongodb(?:\+srv)?://)([^:/@\s]+):([^@/\s]+)@""", RegexOption.IGNORE_CASE),
