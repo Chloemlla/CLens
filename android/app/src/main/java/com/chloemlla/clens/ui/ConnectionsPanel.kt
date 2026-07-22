@@ -168,8 +168,8 @@ private fun ConnectionCard(
                     Spacer(Modifier.size(6.dp))
                     Text("编辑")
                 }
-                OutlinedButton(onClick = onTest, enabled = !loading) { Text("测试") }
-                Button(onClick = onConnect, enabled = !loading) {
+                AnimatedOutlinedButton(onClick = onTest, enabled = !loading) { Text("测试") }
+                AnimatedPrimaryButton(onClick = onConnect, enabled = !loading) {
                     Icon(Icons.Outlined.Link, contentDescription = null, Modifier.size(16.dp))
                     Spacer(Modifier.size(6.dp))
                     Text(if (connected) "重连" else "连接")
@@ -472,7 +472,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             label = { Text("远程 Mongo 主机") },
-                            placeholder = { Text("默认取连接主机 / 127.0.0.1") },
+                            placeholder = { Text("默认取连接主机") },
                             enabled = !state.loading,
                         )
                     },
@@ -494,7 +494,7 @@ private fun ConnectionEditor(state: ClensUiState, viewModel: ClensViewModel) {
                 Button(onClick = viewModel::saveConnection, enabled = !state.loading) {
                     Text("保存连接")
                 }
-                OutlinedButton(onClick = { viewModel.testConnection() }, enabled = !state.loading) { Text("测试当前表单") }
+                AnimatedOutlinedButton(onClick = { viewModel.testConnection() }, enabled = !state.loading) { Text("测试当前表单") }
                 OutlinedButton(onClick = viewModel::cancelEditConnection, enabled = !state.loading) { Text("取消") }
             }
         }

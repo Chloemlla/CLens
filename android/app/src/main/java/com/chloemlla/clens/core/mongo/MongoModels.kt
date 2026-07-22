@@ -6,7 +6,7 @@ data class MongoConnectionProfile(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val uri: String = "",
-    val host: String = "127.0.0.1",
+    val host: String = "",
     val port: Int = 27017,
     val username: String = "",
     val password: String = "",

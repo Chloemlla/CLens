@@ -120,7 +120,7 @@ class MongoConnectionStore(
                         id = item.getString("id"),
                         name = item.optString("name", "未命名连接"),
                         uri = item.optString("uri"),
-                        host = item.optString("host", "127.0.0.1"),
+                        host = item.optString("host", ""),
                         port = item.optInt("port", 27017),
                         username = item.optString("username"),
                         password = item.optString("password"),

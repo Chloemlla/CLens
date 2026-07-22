@@ -106,7 +106,7 @@ data class ConnectionFormState(
     val name: String = "",
     val useUri: Boolean = true,
     val uri: String = "",
-    val host: String = "127.0.0.1",
+    val host: String = "",
     val port: String = "27017",
     val username: String = "",
     val password: String = "",

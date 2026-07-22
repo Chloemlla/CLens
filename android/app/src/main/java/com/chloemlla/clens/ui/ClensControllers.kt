@@ -3,6 +3,7 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
+import com.chloemlla.clens.core.mongo.MongoUriBuilder
 import com.chloemlla.clens.core.mongo.LocalNetworkAccess
 import com.chloemlla.clens.core.mongo.LocalNetworkPermission
 import com.chloemlla.clens.core.mongo.MongoSessionManager
@@ -238,7 +239,11 @@ class ConnectionController(
                 id = form.id ?: UUID.randomUUID().toString(),
                 name = form.name,
                 uri = if (form.useUri) form.uri.trim() else "",
-                host = form.host.trim(),
+                host = if (form.useUri) {
+                    MongoUriBuilder.parseUriToFormFields(form.uri)?.host?.takeIf { it.isNotBlank() } ?: ""
+                } else {
+                    form.host.trim()
+                },
                 port = port,
                 username = form.username.trim(),
                 password = form.password,
