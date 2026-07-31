@@ -1,5 +1,6 @@
 package com.chloemlla.clens.ui
 
+import android.os.Build
 import android.view.InputDevice
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -15,8 +16,12 @@ import androidx.compose.ui.input.key.type
 fun hasExternalKeyboard(): Boolean {
     val devices = InputDevice.getDeviceIds()
     return devices.any { id ->
-        val device = InputDevice.getDevice(id)
-        device != null && (device.isExternal || device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE)
+        InputDevice.getDevice(id)?.let { device ->
+            // InputDevice.isExternal was added in API 29. On older releases,
+            // the keyboard type remains the available physical-keyboard signal.
+            val isExternal = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && device.isExternal
+            isExternal || device.keyboardType != InputDevice.KEYBOARD_TYPE_NONE
+        } == true
     }
 }
 
