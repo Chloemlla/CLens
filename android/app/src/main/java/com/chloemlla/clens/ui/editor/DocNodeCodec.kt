@@ -121,6 +121,19 @@ object DocNodeCodec {
         return null
     }
 
+    /**
+     * Searches all nodes for matches against [query].
+     * Matches field names (path) and display values (case-insensitive).
+     */
+    fun findMatches(root: DocNode, query: String): List<DocNode> {
+        if (query.isBlank()) return emptyList()
+        val lower = query.lowercase()
+        return root.flatten().filter { node ->
+            node.pathKey.lowercase().contains(lower) ||
+            displayValue(node).lowercase().contains(lower)
+        }
+    }
+
     fun isValidObjectId(value: String): Boolean = OBJECT_ID_REGEX.matches(value.trim())
 
     fun generateObjectIdHex(): String {

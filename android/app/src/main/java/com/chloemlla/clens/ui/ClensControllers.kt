@@ -34,18 +34,63 @@ class ClensSessionContext(
     val sessionManager: MongoSessionManager,
     val repository: MongoAdminRepository,
     val actions: ClensActionRunner,
+    val sessionHealth: SessionHealthController,
 ) {
     fun refreshLocalLists() {
         state.update {
             it.copy(
                 queryHistory = localStore.listQueryHistory(),
                 queryFavorites = localStore.listQueryFavorites(),
+                aggregateTemplates = localStore.listAggregateTemplates(),
                 auditLog = localStore.listAuditLog(),
                 verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
                 querySqlGuideExpanded = !localStore.isSqlGuideSeen(),
                 offlineSnapshots = snapshotStore.list(connectionId = state.value.connectedProfileId),
                 stagingItems = stagingStore.list(),
             )
+        }
+    }
+
+    /**
+     * Reloads latency state for all profiles from LocalAppStore.
+     */
+    fun refreshLatencyState() {
+        val latencyMap = mutableMapOf<String, Long>()
+        val staleMap = mutableMapOf<String, Boolean>()
+        for (profile in state.value.profiles) {
+            val m = localStore.getLatencyMs(profile.id)
+            if (m != null) {
+                latencyMap[profile.id] = m.latencyMs
+                staleMap[profile.id] = localStore.isLatencyStale(profile.id)
+            }
+        }
+        state.update {
+            it.copy(
+                connectionLatencyMs = latencyMap,
+                connectionLatencyStale = staleMap,
+            )
+        }
+    }
+
+    /**
+     * Stores a new latency measurement and marks it fresh (not stale).
+     */
+    fun storeLatencyMs(connectionId: String, latencyMs: Long) {
+        localStore.setLatencyMs(connectionId, latencyMs)
+        state.update {
+            it.copy(
+                connectionLatencyMs = it.connectionLatencyMs + (connectionId to latencyMs),
+                connectionLatencyStale = it.connectionLatencyStale + (connectionId to false),
+            )
+        }
+    }
+
+    /**
+     * Sets the measuring-in-progress flag for [connectionId].
+     */
+    fun setMeasuringLatency(connectionId: String, measuring: Boolean) {
+        state.update {
+            it.copy(measuringLatency = it.measuringLatency + (connectionId to measuring))
         }
     }
 
@@ -328,6 +373,7 @@ class ConnectionController(
             val result = sessionManager.connect(target)
             connectionStore.setActiveProfileId(target.id)
             ctx.refreshProfiles()
+            ctx.sessionHealth.bindHealthDataOnConnect(target.id, result)
             state.update {
                 it.copy(
                     connectedProfileId = target.id,
@@ -340,6 +386,7 @@ class ConnectionController(
                     connectionHealthy = true,
                     reconnecting = false,
                     disconnectNotice = null,
+                    healthScore = ctx.sessionHealth.getCurrentHealthScore(),
                 )
             }
             onConnected()
@@ -375,79 +422,180 @@ class ConnectionController(
             }
         }
     }
+
+    /**
+     * On-demand latency measurement for a connected profile.
+     * Shows spinner during measurement; stores result on success.
+     */
+    fun measureConnectionLatency(profileId: String) {
+        if (state.value.connectedProfileId != profileId) return
+        ctx.setMeasuringLatency(profileId, true)
+        try {
+            ctx.actions.run("测量延迟") {
+                val result = sessionManager.healthPing()
+                if (result.ok) {
+                    ctx.storeLatencyMs(profileId, result.latencyMillis)
+                    state.update { it.copy(status = "延迟 ${result.latencyMillis}ms", error = null) }
+                } else {
+                    state.update { it.copy(error = "延迟测量失败") }
+                }
+            }
+        } catch (e: Throwable) {
+            ctx.setMeasuringLatency(profileId, false)
+            throw e
+        }
+    }
 }
 
-class SessionHealthController(
-    private val ctx: ClensSessionContext,
-) {
+class SessionHealthController {
+    lateinit var ctx: ClensSessionContext
+
     private val state get() = ctx.state
     private val sessionManager get() = ctx.sessionManager
     private val monitor = SessionHealthMonitor(sessionManager)
 
     private val callbacks = object : SessionHealthCallbacks {
         override fun onHealthOk() {
-            state.update {
-                it.copy(
-                    connectionHealthy = true,
-                    reconnecting = false,
-                    disconnectNotice = null,
-                )
-            }
+            updateHealthState(healthy = true, notice = null)
         }
 
         override fun onHealthFailed(message: String) {
-            state.update {
-                it.copy(
-                    connectionHealthy = false,
-                    disconnectNotice = "连接似乎已中断：$message",
-                )
-            }
+            monitor.recordOpResult(success = false)
+            persistHealthData()
+            updateHealthState(healthy = false, notice = "连接似乎已中断：$message")
         }
 
         override fun onReconnectStarted(attempt: Int, maxAttempts: Int) {
-            state.update {
-                it.copy(
-                    reconnecting = true,
-                    connectionHealthy = false,
-                    disconnectNotice = "正在自动重连（$attempt/$maxAttempts）…",
-                )
-            }
+            updateHealthState(
+                healthy = false,
+                reconnecting = true,
+                notice = "正在自动重连（$attempt/$maxAttempts）…",
+            )
         }
 
         override fun onReconnectSucceeded(message: String) {
-            state.update {
-                it.copy(
-                    connectionHealthy = true,
-                    reconnecting = false,
-                    disconnectNotice = null,
-                    status = message.ifBlank { "已重新连接" },
-                    error = null,
-                    connectedProfileId = sessionManager.activeProfile?.id ?: it.connectedProfileId,
-                    connectedReadOnly = sessionManager.activeProfile?.readOnly ?: it.connectedReadOnly,
-                )
-            }
+            monitor.recordOpResult(success = true)
+            persistHealthData()
+            updateHealthState(
+                healthy = true,
+                reconnecting = false,
+                notice = null,
+                status = message.ifBlank { "已重新连接" },
+            )
         }
 
         override fun onReconnectFailed(message: String) {
-            state.update {
-                it.copy(
-                    connectionHealthy = false,
-                    reconnecting = true,
-                    disconnectNotice = "重连未成功：$message",
-                )
-            }
+            monitor.recordOpResult(success = false)
+            persistHealthData()
+            updateHealthState(
+                healthy = false,
+                reconnecting = true,
+                notice = "重连未成功：$message",
+            )
         }
 
         override fun onReconnectExhausted(message: String) {
-            state.update {
-                it.copy(
-                    connectionHealthy = false,
-                    reconnecting = false,
-                    disconnectNotice = message,
-                    // Keep connectedProfileId so the user can still tap reconnect against the last profile.
-                )
-            }
+            updateHealthState(
+                healthy = false,
+                reconnecting = false,
+                notice = message,
+            )
         }
+    }
+
+    private fun updateHealthState(
+        healthy: Boolean? = null,
+        reconnecting: Boolean? = null,
+        notice: String? = null,
+        status: String? = null,
+    ) {
+        val score = monitor.computeHealthScore()
+        state.update {
+            it.copy(
+                connectionHealthy = healthy ?: it.connectionHealthy,
+                reconnecting = reconnecting ?: it.reconnecting,
+                disconnectNotice = notice ?: it.disconnectNotice,
+                healthScore = score,
+                status = status ?: it.status,
+                error = null,
+                connectedProfileId = sessionManager.activeProfile?.id ?: it.connectedProfileId,
+                connectedReadOnly = sessionManager.activeProfile?.readOnly ?: it.connectedReadOnly,
+            )
+        }
+    }
+
+    fun bindHealthData(connectionId: String) {
+        val saved = ctx.localStore.getConnectionHealthData(connectionId)
+        monitor.bindConnection(connectionId, saved)
+        state.update { it.copy(healthScore = monitor.computeHealthScore()) }
+    }
+
+    fun recordLatencyAndScore(latencyMs: Long) {
+        monitor.recordLatencySample(latencyMs)
+        monitor.recordOpResult(success = true)
+        persistHealthData()
+        state.update { it.copy(healthScore = monitor.computeHealthScore()) }
+    }
+
+    fun recordOpResult(success: Boolean) {
+        monitor.recordOpResult(success)
+        persistHealthData()
+        state.update { it.copy(healthScore = monitor.computeHealthScore()) }
+    }
+
+    fun getCurrentHealthScore(): ConnectionHealthScore? = monitor.computeHealthScore()
+
+    fun bindHealthDataOnConnect(connectionId: String, result: ConnectionTestResult) {
+        val saved = ctx.localStore.getConnectionHealthData(connectionId)
+        monitor.bindConnection(connectionId, saved)
+        if (result.ok) {
+            monitor.recordLatencySample(result.latencyMillis)
+            monitor.recordOpResult(success = true)
+            ctx.storeLatencyMs(connectionId, result.latencyMillis)
+        } else {
+            monitor.recordOpResult(success = false)
+        }
+        persistHealthData()
+        state.update { it.copy(healthScore = monitor.computeHealthScore()) }
+    }
+
+    fun clearHealthHistory() {
+        monitor.resetHealthData()
+        val connId = state.value.connectedProfileId ?: return
+        ctx.localStore.clearConnectionHealthData(connId)
+        state.update { it.copy(healthScore = monitor.computeHealthScore()) }
+    }
+
+    fun showHealthDetailSheet() {
+        state.update { it.copy(showHealthDetailSheet = true) }
+    }
+
+    fun hideHealthDetailSheet() {
+        state.update { it.copy(showHealthDetailSheet = false) }
+    }
+
+    fun refreshHealthMeasurement() {
+        val connId = state.value.connectedProfileId ?: return
+        ctx.setMeasuringLatency(connId, true)
+        try {
+            ctx.actions.run("测量延迟") {
+                val result = sessionManager.healthPing()
+                if (result.ok) {
+                    recordLatencyAndScore(result.latencyMillis)
+                    ctx.storeLatencyMs(connId, result.latencyMillis)
+                } else {
+                    recordOpResult(success = false)
+                }
+            }
+        } catch (e: Throwable) {
+            ctx.setMeasuringLatency(connId, false)
+            throw e
+        }
+    }
+
+    private fun persistHealthData() {
+        val connId = state.value.connectedProfileId ?: return
+        ctx.localStore.saveConnectionHealthData(monitor.getHealthData())
     }
 
     /**
@@ -506,6 +654,7 @@ class SessionHealthController(
             }
             // Ensure profileRef is populated even if client already dropped.
             val result = sessionManager.connect(profile)
+            bindHealthDataOnConnect(profile.id, result)
             state.update {
                 it.copy(
                     connectedProfileId = profile.id,
@@ -515,6 +664,7 @@ class SessionHealthController(
                     status = result.message.ifBlank { "已重新连接" },
                     error = null,
                     connectedReadOnly = profile.readOnly,
+                    healthScore = monitor.computeHealthScore(),
                 )
             }
         }

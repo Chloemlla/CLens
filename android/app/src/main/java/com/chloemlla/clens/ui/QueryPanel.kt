@@ -13,10 +13,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.query.AggregateTemplateSheet
+import com.chloemlla.clens.ui.query.SaveAggregateTemplateDialog
 import com.chloemlla.clens.ui.query.VisualQueryBuilder
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -37,8 +46,93 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
         FlagRow("聚合模式", state.queryModeAggregate, !state.loading, viewModel::setQueryModeAggregate)
         if (state.queryModeAggregate) {
+            var showTemplateSheet by remember { mutableStateOf(false) }
+            var showSaveDialog by remember { mutableStateOf(false) }
+            var pendingLoadPipeline by remember { mutableStateOf<String?>(null) }
+
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            val scope = rememberCoroutineScope()
+
             JsonField("Pipeline JSON 数组", state.queryPipelineJson, !state.loading, minLines = 8) {
                 viewModel.updateText(ClensViewModel.Field.QueryPipeline, it)
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = false,
+                    onClick = { showTemplateSheet = true },
+                    enabled = !state.loading,
+                    label = { Text("Templates") },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = { showSaveDialog = true },
+                    enabled = !state.loading && state.queryPipelineJson.isNotBlank() && state.queryPipelineJson != "[]",
+                    label = { Text("★ Save") },
+                )
+            }
+
+            if (showTemplateSheet) {
+                AggregateTemplateSheet(
+                    templates = state.aggregateTemplates,
+                    currentConnectionId = state.connectedProfileId,
+                    sheetState = sheetState,
+                    onDismiss = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                            if (!sheetState.isVisible) showTemplateSheet = false
+                        }
+                    },
+                    onTemplateSelect = { template ->
+                        val isNonEmpty = state.queryPipelineJson.isNotBlank() &&
+                            state.queryPipelineJson != "[]" &&
+                            state.queryPipelineJson != "[\n  { \"\$match\": {} }\n]"
+                        if (isNonEmpty) {
+                            // Defer loading until confirmed
+                            pendingLoadPipeline = template.pipelineJson
+                        } else {
+                            viewModel.updateText(ClensViewModel.Field.QueryPipeline, template.pipelineJson)
+                            scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                if (!sheetState.isVisible) showTemplateSheet = false
+                            }
+                        }
+                    },
+                    onTemplateDelete = viewModel::deleteAggregateTemplate,
+                    onTemplateUpdate = viewModel::updateAggregateTemplate,
+                )
+            }
+
+            if (showSaveDialog) {
+                SaveAggregateTemplateDialog(
+                    onDismiss = { showSaveDialog = false },
+                    onConfirm = { name, description ->
+                        viewModel.saveAggregateTemplate(name, description, state.queryPipelineJson)
+                        showSaveDialog = false
+                    },
+                )
+            }
+
+            // Confirmation dialog when loading a template into a non-empty editor
+            pendingLoadPipeline?.let { pipelineJson ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { pendingLoadPipeline = null },
+                    title = { Text("替换 Pipeline？") },
+                    text = { Text("当前编辑器已有内容，确定要用模板替换吗？") },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                viewModel.updateText(ClensViewModel.Field.QueryPipeline, pipelineJson)
+                                pendingLoadPipeline = null
+                            },
+                        ) { Text("替换") }
+                    },
+                    dismissButton = {
+                        OutlinedButton(onClick = { pendingLoadPipeline = null }) { Text("取消") }
+                    },
+                )
             }
         } else {
             Text(

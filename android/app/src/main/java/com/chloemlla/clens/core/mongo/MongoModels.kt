@@ -236,7 +236,82 @@ data class AuditLogEntry(
     val createdAtMillis: Long = System.currentTimeMillis(),
 )
 
+/**
+ * A saved aggregate pipeline template.
+ * The pipeline field stores a JSON string representation of a List<BsonDocument>.
+ */
+data class AggregateTemplateEntry(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    /** Null means this template works with any connection (global). */
+    val connectionId: String? = null,
+    /** JSON string of the pipeline array, stored via Document.toJson(). */
+    val pipelineJson: String = "[]",
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+) {
+    /** Display title is just the template name. */
+    val title: String get() = name
+}
+
 sealed class MongoAdminException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     class Validation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)
     class Operation(message: String, cause: Throwable? = null) : MongoAdminException(message, cause)
+}
+
+/**
+ * Rolling window of health samples for a connection.
+ * Stored as JSON in [com.chloemlla.clens.core.storage.LocalAppStore].
+ */
+data class ConnectionHealthData(
+    val connectionId: String,
+    val latencySamples: List<Long> = emptyList(),
+    val errorSamples: List<Boolean> = emptyList(),
+    val timestamps: List<Long> = emptyList(),
+    val connectedAtMillis: Long = System.currentTimeMillis(),
+) {
+    companion object {
+        const val MAX_SAMPLES = 50
+    }
+
+    fun withLatencySample(latencyMs: Long): ConnectionHealthData {
+        val ts = System.currentTimeMillis()
+        val nextLatency = (latencySamples + latencyMs).takeLast(MAX_SAMPLES)
+        val nextTs = (timestamps + ts).takeLast(MAX_SAMPLES)
+        return copy(latencySamples = nextLatency, timestamps = nextTs)
+    }
+
+    fun withOpResult(success: Boolean): ConnectionHealthData {
+        val nextErrors = (errorSamples + !success).takeLast(MAX_SAMPLES)
+        return copy(errorSamples = nextErrors)
+    }
+
+    fun reset(): ConnectionHealthData = copy(
+        latencySamples = emptyList(),
+        errorSamples = emptyList(),
+        timestamps = emptyList(),
+        connectedAtMillis = System.currentTimeMillis(),
+    )
+}
+
+/**
+ * Computed health score breakdown.
+ */
+data class ConnectionHealthScore(
+    val overall: Int, // 0-100
+    val latencyScore: Int, // 0-100
+    val errorRateScore: Int, // 0-100
+    val uptimeScore: Int, // 0-100
+    val latencyAvgMs: Long?,
+    val successCount: Int,
+    val totalCount: Int,
+    val uptimeMillis: Long,
+) {
+    val label: String
+        get() = when {
+            overall >= 80 -> "健康"
+            overall >= 50 -> "轻微延迟"
+            else -> "连接不稳定"
+        }
 }

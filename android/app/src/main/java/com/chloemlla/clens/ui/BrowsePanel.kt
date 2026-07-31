@@ -5,37 +5,68 @@ import com.chloemlla.clens.core.export.DocumentExportFormat
 import java.io.File
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.chloemlla.clens.ui.editor.DocumentEditorPanel
 import com.chloemlla.clens.ui.browse.BrowseBreadcrumb
 import com.chloemlla.clens.ui.browse.CollectionStatsQuickPanel
 import com.chloemlla.clens.ui.browse.DocumentCardStream
 import com.chloemlla.clens.ui.browse.extractDocumentIdLabel
+import com.chloemlla.clens.ui.browse.SortChip
+import com.chloemlla.clens.ui.browse.SortPickerSheet
 
 @Composable
 internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
     val context = LocalContext.current
     val writeEnabled = !state.loading && state.selectedCollection.isNotBlank() && !state.writesBlocked
+    var showBulkUpdateSheet by remember { mutableStateOf(false) }
+    var showSortPicker by remember { mutableStateOf(false) }
+    val fieldTypes = remember(state.documents) {
+        com.chloemlla.clens.core.mongo.QueryFieldInferencer.inferFieldTypes(state.documents)
+    }
+    val recentSorts = remember(state.connectedProfileId, state.selectedDatabase, state.selectedCollection) {
+        viewModel.suggestedRecentSorts()
+    }
 
     PanelColumn(state = state, onDismissFeedback = viewModel::clearFeedback) {
         ClensAppHeader(state = state)
@@ -294,8 +325,26 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("Filter", state.browseFilterJson, !state.loading) {
             viewModel.updateText(ClensViewModel.Field.BrowseFilter, it)
         }
+        ActionRow {
+            SortChip(
+                sortField = state.browseSortField,
+                sortDirection = state.browseSortDirection,
+                onClick = { showSortPicker = true },
+            )
+        }
         JsonField("Sort", state.browseSortJson, !state.loading) {
             viewModel.updateText(ClensViewModel.Field.BrowseSort, it)
+        }
+        if (showSortPicker) {
+            SortPickerSheet(
+                sortField = state.browseSortField,
+                sortDirection = state.browseSortDirection,
+                fieldTypes = fieldTypes,
+                recentSorts = recentSorts,
+                onApply = { field, direction -> viewModel.applyBrowseSort(field, direction) },
+                onClear = { viewModel.clearBrowseSort() },
+                onDismiss = { showSortPicker = false },
+            )
         }
         JsonField("Projection", state.browseProjectionJson, !state.loading) {
             viewModel.updateText(ClensViewModel.Field.BrowseProjection, it)
@@ -341,7 +390,16 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 selectedJson = state.selectedDocumentJson,
                 titlePrefix = "文档",
                 startIndex = state.documentSkip + 1,
-                onClick = { _, json -> viewModel.selectDocument(json) },
+                onClick = { _, json ->
+                    if (state.isSelectMode) {
+                        viewModel.toggleDocumentSelection(json)
+                    } else {
+                        viewModel.selectDocument(json)
+                    }
+                },
+                onLongClick = { _, json ->
+                    viewModel.enterSelectMode(json)
+                },
             )
         } else {
             DocumentResultList(
@@ -351,6 +409,34 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 titlePrefix = "文档",
                 startIndex = state.documentSkip + 1,
                 onSelect = viewModel::selectDocument,
+            )
+        }
+
+        // Multi-select FAB action bar
+        if (state.isSelectMode) {
+            SelectModeActionBar(
+                selectedCount = state.selectedDocIds.size,
+                pageCount = state.documents.size,
+                onSelectAll = viewModel::selectAllOnPage,
+                onDelete = viewModel::requestDeleteSelected,
+                onExportJson = { viewModel.exportSelected(DocumentExportFormat.JSON) },
+                onExportCsv = { viewModel.exportSelected(DocumentExportFormat.CSV) },
+                onBulkUpdate = { showBulkUpdateSheet = true },
+                onClose = viewModel::exitSelectMode,
+            )
+        }
+
+        // Bulk update bottom sheet
+        if (showBulkUpdateSheet) {
+            BulkUpdateSheet(
+                initialField = state.bulkUpdateField,
+                initialValue = state.bulkUpdateValue,
+                selectedCount = state.selectedDocIds.size,
+                onApply = { field, value ->
+                    showBulkUpdateSheet = false
+                    viewModel.applyBulkUpdate(field, value)
+                },
+                onDismiss = { showBulkUpdateSheet = false },
             )
         }
 
@@ -482,6 +568,13 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             onRestoreDraft = viewModel::restoreDocumentDraft,
             onDiscardDraft = viewModel::discardDocumentDraft,
             onStartBlankDocument = viewModel::startBlankDocument,
+            onSave = {
+                if (state.selectedDocumentJson.isNotBlank()) {
+                    viewModel.replaceSelectedDocument()
+                } else {
+                    viewModel.insertDocuments()
+                }
+            },
         )
         ScrollableActionRow {
             Button(onClick = viewModel::insertDocuments, enabled = writeEnabled) { Text("插入") }
@@ -490,6 +583,184 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             OutlinedButton(onClick = { viewModel.updateDocuments(true) }, enabled = writeEnabled) { Text("updateMany") }
             OutlinedButton(onClick = { viewModel.deleteDocuments(false) }, enabled = writeEnabled) { Text("deleteOne") }
             OutlinedButton(onClick = { viewModel.deleteDocuments(true) }, enabled = writeEnabled) { Text("deleteMany") }
+        }
+    }
+}
+
+/**
+ * Floating action bar shown when multi-select mode is active.
+ * Displays selected count, select-all chip, and batch action buttons.
+ */
+@Composable
+private fun SelectModeActionBar(
+    selectedCount: Int,
+    pageCount: Int,
+    onSelectAll: () -> Unit,
+    onDelete: () -> Unit,
+    onExportJson: () -> Unit,
+    onExportCsv: () -> Unit,
+    onBulkUpdate: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Outlined.Close, contentDescription = "退出选择")
+                    }
+                    Text(
+                        text = "已选 $selectedCount 条",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+                FilterChip(
+                    selected = selectedCount == pageCount && pageCount > 0,
+                    onClick = onSelectAll,
+                    label = { Text("全选本页") },
+                    enabled = pageCount > 0,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDelete,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("删除")
+                }
+                OutlinedButton(
+                    onClick = onExportJson,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("导出 JSON")
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onExportCsv,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("导出 CSV")
+                }
+                OutlinedButton(
+                    onClick = onBulkUpdate,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("批量更新")
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Bottom-sheet dialog for bulk update: field name + new value, applies $set to all selected docs.
+ */
+@Composable
+private fun BulkUpdateSheet(
+    initialField: String,
+    initialValue: String,
+    selectedCount: Int,
+    onApply: (fieldName: String, fieldValue: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var fieldName by remember { mutableStateOf(initialField) }
+    var fieldValue by remember { mutableStateOf(initialValue) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "批量更新 $selectedCount 条文档",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    text = "将字段值设置为指定内容（使用 $set 操作符）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = fieldName,
+                    onValueChange = { fieldName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("字段名") },
+                    placeholder = { Text("例如：status") },
+                )
+                OutlinedTextField(
+                    value = fieldValue,
+                    onValueChange = { fieldValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = false,
+                    label = { Text("新值（JSON 格式）") },
+                    placeholder = { Text("例如：\"active\"" ) },
+                    minLines = 2,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("取消")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { onApply(fieldName, fieldValue) },
+                        enabled = fieldName.isNotBlank(),
+                    ) {
+                        Text("应用更新")
+                    }
+                }
+            }
         }
     }
 }

@@ -80,11 +80,15 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 active = profile.id == state.activeProfileId,
                 connected = profile.id == state.connectedProfileId,
                 loading = state.loading,
+                latencyMs = state.connectionLatencyMs[profile.id],
+                stale = state.connectionLatencyStale[profile.id] == true,
+                measuring = state.measuringLatency[profile.id] == true,
                 onActivate = { viewModel.setActiveProfile(profile.id) },
                 onEdit = { viewModel.startEditConnection(profile) },
                 onTest = { viewModel.testConnection(profile) },
                 onConnect = { viewModel.connect(profile) },
                 onDelete = { viewModel.deleteConnection(profile.id) },
+                onMeasureLatency = { viewModel.measureConnectionLatency(profile.id) },
             )
         }
         if (state.editingConnection) {
@@ -99,11 +103,15 @@ private fun ConnectionCard(
     active: Boolean,
     connected: Boolean,
     loading: Boolean,
+    latencyMs: Long?,
+    stale: Boolean,
+    measuring: Boolean,
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onTest: () -> Unit,
     onConnect: () -> Unit,
     onDelete: () -> Unit,
+    onMeasureLatency: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -116,13 +124,27 @@ private fun ConnectionCard(
                 val compact = maxWidth < 420.dp
                 val titleBlock: @Composable (Modifier) -> Unit = { titleModifier ->
                     Column(modifier = titleModifier) {
-                        Text(
-                            text = profile.name,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = profile.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            if (connected) {
+                                LatencyBadge(
+                                    latencyMs = latencyMs,
+                                    stale = stale,
+                                    measuring = measuring,
+                                    onClick = onMeasureLatency,
+                                )
+                            }
+                        }
                         Text(
                             text = profile.displayTarget,
                             style = MaterialTheme.typography.bodySmall,

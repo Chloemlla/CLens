@@ -3,7 +3,7 @@ package com.chloemlla.clens.ui.editor
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.widget.Toast
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
@@ -19,14 +19,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.Search
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -49,14 +56,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import com.chloemlla.clens.ui.KeyboardShortcut
 import com.chloemlla.clens.ui.copyTextToClipboard
 import java.util.Calendar
+
+private val SearchHighlightColor = Color(0xFFFFF176) // warm yellow
+private val SearchHighlightDarkColor = Color(0xFF5C5100)
 
 @Composable
 internal fun DocumentEditorPanel(
@@ -77,13 +98,81 @@ internal fun DocumentEditorPanel(
     onRestoreDraft: () -> Unit,
     onDiscardDraft: () -> Unit,
     onStartBlankDocument: () -> Unit,
+    /** Callback for Ctrl+S shortcut: triggers save (insert or replace). */
+    onSave: () -> Unit = {},
+    /** Called when a keyboard shortcut is handled here. */
+    onShortcutHandled: (KeyboardShortcut) -> Unit = {},
 ) {
     val context = LocalContext.current
     var menuPath by remember { mutableStateOf<String?>(null) }
     var fullScreenPath by remember { mutableStateOf<String?>(null) }
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchMatchIndex by remember { mutableStateOf(0) }
+
+    val allMatches = remember(editor.root, searchQuery) {
+        if (searchQuery.isNotBlank()) DocNodeCodec.findMatches(editor.root, searchQuery) else emptyList()
+    }
+    val matchCount = allMatches.size
+    val currentMatchPath by remember(allMatches, searchMatchIndex) {
+        mutableStateOf(if (allMatches.isNotEmpty()) allMatches.getOrElse(searchMatchIndex) { allMatches.first() } else null)
+    }
+
+    // Reset match index when results change
+    LaunchedEffect(matchCount) {
+        if (searchMatchIndex >= matchCount) {
+            searchMatchIndex = (matchCount - 1).coerceAtLeast(0)
+        }
+    }
+
+    // Sync search text across modes
+    var searchTextFieldValue by remember(searchQuery) {
+        mutableStateOf(TextFieldValue(searchQuery))
+    }
+    LaunchedEffect(searchQuery) {
+        if (searchTextFieldValue.text != searchQuery) {
+            searchTextFieldValue = TextFieldValue(searchQuery)
+        }
+    }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    when {
+                        event.key == Key.CtrlLeft || event.key == Key.CtrlRight -> false
+                        event.isCtrlPressed && !event.isShiftPressed -> {
+                            when (event.key) {
+                                Key.S -> { onSave(); true }
+                                Key.F -> { showSearch = true; true }
+                                else -> false
+                            }
+                        }
+                        event.key == Key.Tab -> {
+                            if (event.isShiftPressed) {
+                                // Shift+Tab: navigate to previous field
+                                onShortcutHandled(KeyboardShortcut.TabPrev)
+                            } else {
+                                onShortcutHandled(KeyboardShortcut.TabNext)
+                            }
+                            true
+                        }
+                        event.key == Key.Escape -> {
+                            if (showSearch) {
+                                showSearch = false
+                                searchQuery = ""
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
@@ -109,6 +198,45 @@ internal fun DocumentEditorPanel(
                     color = MaterialTheme.colorScheme.tertiary,
                 )
             }
+            IconButton(
+                onClick = {
+                    showSearch = !showSearch
+                    if (showSearch) {
+                        searchQuery = ""
+                        searchTextFieldValue = TextFieldValue("")
+                        searchMatchIndex = 0
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = "搜索",
+                    tint = if (showSearch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Search bar
+        if (showSearch) {
+            SearchBar(
+                query = searchTextFieldValue,
+                onQueryChange = { newValue ->
+                    searchTextFieldValue = newValue
+                    searchQuery = newValue.text
+                    searchMatchIndex = 0
+                },
+                onSearch = { searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, matchCount - 1) },
+                onClear = {
+                    searchQuery = ""
+                    searchTextFieldValue = TextFieldValue("")
+                    showSearch = false
+                },
+                onPrev = { searchMatchIndex = (searchMatchIndex - 1).coerceIn(0, (matchCount - 1).coerceAtLeast(0)) },
+                onNext = { searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, (matchCount - 1).coerceAtLeast(0)) },
+                matchCount = matchCount,
+                currentIndex = searchMatchIndex,
+            )
         }
 
         editor.draftBanner?.let { banner ->
@@ -148,6 +276,12 @@ internal fun DocumentEditorPanel(
                 enabled = enabled,
                 label = { Text("Code") },
             )
+            FilterChip(
+                selected = editor.mode == DocumentEditorMode.Raw,
+                onClick = { onModeChange(DocumentEditorMode.Raw) },
+                enabled = enabled,
+                label = { Text("Raw") },
+            )
             TextButton(onClick = onStartBlankDocument, enabled = editable) {
                 Text("新建空白")
             }
@@ -178,6 +312,9 @@ internal fun DocumentEditorPanel(
                     onCloneNode = onCloneNode,
                     onConvertNodeType = onConvertNodeType,
                     onOpenFullScreen = { fullScreenPath = it },
+                    searchQuery = searchQuery,
+                    searchMatches = allMatches,
+                    currentMatchPath = currentMatchPath?.pathKey,
                 )
             }
             DocumentEditorMode.Code -> {
@@ -188,6 +325,14 @@ internal fun DocumentEditorPanel(
                     canApply = editor.canApplyCode,
                     onCodeChange = onCodeChange,
                     onApplyCode = onApplyCode,
+                )
+            }
+            DocumentEditorMode.Raw -> {
+                RawJsonEditorPanel(
+                    editor = editor,
+                    enabled = editable,
+                    onCodeChange = onCodeChange,
+                    onApplyToTree = onApplyCode,
                 )
             }
         }
@@ -253,8 +398,22 @@ private fun DocumentTreeView(
     onCloneNode: (String) -> Unit,
     onConvertNodeType: (pathKey: String, type: DocValueType) -> Unit,
     onOpenFullScreen: (String) -> Unit,
+    searchQuery: String = "",
+    searchMatches: List<DocNode> = emptyList(),
+    currentMatchPath: String? = null,
 ) {
     val rows = remember(root) { DocNodeCodec.flattenVisible(root) }
+    val listState = rememberLazyListState()
+
+    // Scroll to current match
+    LaunchedEffect(currentMatchPath, rows) {
+        currentMatchPath?.let { targetPath ->
+            val rowIndex = rows.indexOfFirst { it.node.pathKey == targetPath }
+            if (rowIndex >= 0) {
+                listState.animateScrollToItem(rowIndex)
+            }
+        }
+    }
     Surface(
         tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.medium,
@@ -263,12 +422,15 @@ private fun DocumentTreeView(
             .heightIn(min = 160.dp, max = 360.dp),
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             items(rows, key = { it.node.pathKey.ifBlank { "root" } }) { row ->
+                val isMatch = searchMatches.any { it.pathKey == row.node.pathKey }
+                val isCurrentMatch = currentMatchPath == row.node.pathKey
                 DocumentTreeRow(
                     row = row,
                     enabled = enabled,
@@ -285,6 +447,9 @@ private fun DocumentTreeView(
                     onCloneNode = onCloneNode,
                     onConvertNodeType = onConvertNodeType,
                     onOpenFullScreen = onOpenFullScreen,
+                    searchQuery = searchQuery,
+                    highlightMatch = isMatch,
+                    isCurrentMatch = isCurrentMatch,
                 )
             }
         }
@@ -307,10 +472,18 @@ private fun DocumentTreeRow(
     onCloneNode: (String) -> Unit,
     onConvertNodeType: (pathKey: String, type: DocValueType) -> Unit,
     onOpenFullScreen: (String) -> Unit,
+    searchQuery: String = "",
+    highlightMatch: Boolean = false,
+    isCurrentMatch: Boolean = false,
 ) {
     val node = row.node
     val canMenu = node.pathKey.isNotBlank()
-    Box(modifier = Modifier.fillMaxWidth()) {
+    val bgColor = when {
+        isCurrentMatch -> MaterialTheme.colorScheme.primaryContainer
+        highlightMatch -> SearchHighlightColor.copy(alpha = 0.3f)
+        else -> Color.Transparent
+    }
+    Box(modifier = Modifier.fillMaxWidth().background(bgColor, MaterialTheme.shapes.small)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -424,6 +597,106 @@ private fun DocumentTreeRow(
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SearchBar(
+    query: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
+    onSearch: () -> Unit,
+    onClear: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    matchCount: Int,
+    currentIndex: Int,
+) {
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Surface(
+        tonalElevation = 2.dp,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Search,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+                placeholder = { Text("搜索字段名或值...", style = MaterialTheme.typography.bodySmall) },
+                textStyle = MaterialTheme.typography.bodyMedium,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Search,
+                    capitalization = KeyboardCapitalization.None,
+                ),
+                keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+            )
+            if (query.text.isNotBlank()) {
+                if (matchCount > 0) {
+                    Text(
+                        text = "${currentIndex + 1}/${matchCount}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    Text(
+                        text = "无结果",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            IconButton(
+                onClick = onPrev,
+                enabled = matchCount > 0,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowUp,
+                    contentDescription = "上一个",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            IconButton(
+                onClick = onNext,
+                enabled = matchCount > 0,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = "下一个",
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            IconButton(
+                onClick = onClear,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "清除搜索",
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }
@@ -960,5 +1233,69 @@ private fun normalizeEditableType(type: DocValueType): DocValueType {
         DocValueType.Binary,
         -> type
         else -> DocValueType.String
+    }
+}
+
+/**
+ * Raw JSON mode editor panel with syntax highlighting, line numbers, and toolbar actions.
+ */
+@Composable
+private fun RawJsonEditorPanel(
+    editor: DocumentEditorState,
+    enabled: Boolean,
+    onCodeChange: (String) -> Unit,
+    onApplyToTree: () -> Unit,
+) {
+    var validationResult by remember { mutableStateOf<JsonValidationResult?>(null) }
+
+    // Serialize tree to JSON when switching to Raw mode
+    val initialJson = remember(editor.root) {
+        runCatching { DocNodeCodec.serialize(editor.root) }.getOrDefault("{\n  \n}")
+    }
+
+    // Use editor.codeText as the current raw text, falling back to tree serialization
+    val currentJson = if (editor.codeText.isNotBlank()) editor.codeText else initialJson
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RawJsonEditor(
+            jsonText = currentJson,
+            enabled = enabled,
+            onJsonChange = { newJson ->
+                onCodeChange(newJson)
+            },
+            onValidateRequest = {
+                validationResult = JsonCodeAssist.validateJson(currentJson)
+            },
+            validationResult = validationResult,
+        )
+
+        // Apply to tree button
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    val result = JsonCodeAssist.validateJson(currentJson)
+                    validationResult = result
+                    if (result is JsonValidationResult.Valid) {
+                        onApplyToTree()
+                    }
+                },
+                enabled = enabled,
+            ) {
+                Text("应用到树")
+            }
+        }
+
+        // Error display for invalid JSON when attempting to apply
+        val sizeBytes = currentJson.toByteArray().size
+        if (sizeBytes > 5 * 1024 * 1024) {
+            Text(
+                text = "文档超过 5MB 限制，Raw 模式不可用",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }

@@ -1,18 +1,33 @@
 package com.chloemlla.clens.ui.browse
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,15 +36,20 @@ import org.json.JSONObject
 
 /**
  * Lightweight document stream for mobile: `_id` plus up to four other top-level fields.
+ * Supports multi-select mode with checkbox overlay.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun DocumentCardStream(
     documents: List<String>,
     selectedJson: String = "",
+    selectedIds: Set<String> = emptySet(),
+    isSelectMode: Boolean = false,
     titlePrefix: String = "文档",
     startIndex: Int = 1,
     maxExtraFields: Int = 4,
     onClick: (index: Int, json: String) -> Unit,
+    onLongClick: (index: Int, json: String) -> Unit = { _, _ -> },
 ) {
     if (documents.isEmpty()) {
         Text("暂无文档", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -38,21 +58,29 @@ internal fun DocumentCardStream(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         documents.forEachIndexed { index, json ->
             val preview = previewDocumentFields(json, maxExtraFields)
-            val selected = json == selectedJson
+            val docId = extractDocumentIdFromJson(json)
+            val isSelected = if (isSelectMode) {
+                docId in selectedIds
+            } else {
+                json == selectedJson
+            }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onClick(index, json) },
+                    .combinedClickable(
+                        onClick = { onClick(index, json) },
+                        onLongClick = { onLongClick(index, json) },
+                    ),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (selected) {
+                    containerColor = if (isSelected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerLow
                     },
                 ),
                 border = BorderStroke(
-                    width = 1.dp,
-                    color = if (selected) {
+                    width = if (isSelected) 2.dp else 1.dp,
+                    color = if (isSelected) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.outlineVariant
@@ -64,15 +92,34 @@ internal fun DocumentCardStream(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(
-                        text = titlePrefix + " #" + (startIndex + index),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = titlePrefix + " #" + (startIndex + index),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isSelectMode) {
+                            Icon(
+                                imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                                contentDescription = if (isSelected) "已选中" else "未选中",
+                                tint = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
                     Text(
                         text = "_id: " + preview.id,
                         style = MaterialTheme.typography.bodyMedium,
@@ -80,7 +127,7 @@ internal fun DocumentCardStream(
                         fontFamily = FontFamily.Monospace,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (selected) {
+                        color = if (isSelected) {
                             MaterialTheme.colorScheme.onPrimaryContainer
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -111,7 +158,7 @@ internal fun DocumentCardStream(
                     }
                     if (preview.truncated) {
                         Text(
-                            text = "…更多字段",
+                            text = "...更多字段",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -163,6 +210,25 @@ internal fun extractDocumentIdLabel(json: String): String {
         if (!obj.has("_id")) return ""
         formatJsonValue(obj.opt("_id"))
     }.getOrDefault("").take(48)
+}
+
+/** Extract the _id value as a raw string (ObjectId or plain string) for selection identity. */
+internal fun extractDocumentIdFromJson(json: String): String {
+    if (json.isBlank()) return ""
+    return runCatching {
+        val obj = JSONObject(json)
+        if (!obj.has("_id")) return ""
+        val id = obj.get("_id")
+        when (id) {
+            is JSONObject -> {
+                when {
+                    id.has("\$oid") -> id.optString("\$oid")
+                    else -> id.toString()
+                }
+            }
+            else -> id.toString()
+        }
+    }.getOrDefault("")
 }
 
 private fun formatJsonValue(value: Any?): String {

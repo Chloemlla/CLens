@@ -2,6 +2,7 @@ package com.chloemlla.clens.ui
 
 import com.chloemlla.clens.core.mongo.QueryHistoryEntry
 import com.chloemlla.clens.core.mongo.QueryFavoriteEntry
+import com.chloemlla.clens.core.mongo.AggregateTemplateEntry
 import com.chloemlla.clens.core.mongo.QueryFieldInferencer
 import com.chloemlla.clens.core.mongo.SqlToMongoTranslator
 import com.chloemlla.clens.core.mongo.SqlTranslateException
@@ -417,6 +418,61 @@ class QueryController(
         ctx.refreshLocalLists()
     }
 
+    fun listAggregateTemplates(): List<AggregateTemplateEntry> {
+        return ctx.localStore.listAggregateTemplates()
+    }
+
+    fun saveAggregateTemplate(name: String, description: String, pipelineJson: String) {
+        val current = state.value
+        val entry = AggregateTemplateEntry(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            description = description,
+            connectionId = current.connectedProfileId,
+            pipelineJson = pipelineJson,
+        )
+        runCatching {
+            ctx.localStore.saveAggregateTemplate(entry)
+            ctx.refreshLocalLists()
+            state.update {
+                it.copy(
+                    status = "已保存模板：$name",
+                    error = null,
+                )
+            }
+        }.onFailure { error ->
+            state.update { it.copy(error = error.message ?: "保存模板失败") }
+        }
+    }
+
+    fun updateAggregateTemplate(id: String, name: String, description: String) {
+        val existing = ctx.localStore.listAggregateTemplates().firstOrNull { it.id == id } ?: return
+        val updated = existing.copy(name = name, description = description)
+        runCatching {
+            ctx.localStore.updateAggregateTemplate(updated)
+            ctx.refreshLocalLists()
+            state.update {
+                it.copy(
+                    status = "已更新模板：$name",
+                    error = null,
+                )
+            }
+        }.onFailure { error ->
+            state.update { it.copy(error = error.message ?: "更新模板失败") }
+        }
+    }
+
+    fun loadAggregateTemplate(id: String): String? {
+        val entry = state.value.aggregateTemplates.firstOrNull { it.id == id } ?: return null
+        return entry.pipelineJson
+    }
+
+    fun deleteAggregateTemplate(id: String) {
+        ctx.localStore.deleteAggregateTemplate(id)
+        ctx.refreshLocalLists()
+        state.update { it.copy(status = "已删除模板") }
+    }
+
     fun restoreQueryHistory(id: String) {
         val entry = state.value.queryHistory.firstOrNull { it.id == id } ?: return
         val clauses = if (!entry.modeAggregate) {
@@ -474,6 +530,28 @@ class QueryController(
             VisualFilterBuilder.toFilterJson(current.queryVisualClauses, pretty = true)
         } else {
             current.queryFilterJson
+        }
+    }
+
+    /**
+     * Handle keyboard shortcuts relevant to the Query panel.
+     * Delegates save/edit/new to the browse controller where those operations live.
+     * Returns true if the shortcut was handled, false otherwise.
+     */
+    fun handleShortcut(shortcut: KeyboardShortcut): Boolean {
+        return when (shortcut) {
+            KeyboardShortcut.Save,
+            KeyboardShortcut.Edit,
+            KeyboardShortcut.NewDocument -> {
+                // These delegate to the browse controller; handled at the activity level.
+                false
+            }
+            KeyboardShortcut.Escape -> {
+                // Clear query results / dismiss any query panel state.
+                state.update { it.copy(queryResults = emptyList(), explainJson = "") }
+                true
+            }
+            else -> false
         }
     }
 }

@@ -48,6 +48,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +62,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.Lifecycle
 import androidx.compose.runtime.DisposableEffect
 import com.chloemlla.clens.core.storage.ThemeMode
+import com.chloemlla.clens.ui.editor.DocumentDiffPanel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -204,6 +209,14 @@ fun ClensApp(
             onConfirmInputChange = viewModel::updateDestructiveConfirmInput,
             onConfirm = viewModel::confirmDestructive,
             onCancel = viewModel::cancelDestructive,
+        )
+    }
+
+    state.diffState?.let { diff ->
+        DocumentDiffPanel(
+            originalJson = diff.originalJson,
+            modifiedJson = diff.modifiedJson,
+            onDismiss = viewModel::dismissDocumentDiff,
         )
     }
 }

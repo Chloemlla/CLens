@@ -55,11 +55,22 @@ data class DocNode(
 
     val displayLabel: String
         get() = key ?: path.lastOrNull()?.toString() ?: "root"
+
+    /**
+     * Returns all nodes in the tree as a flat list (depth-first pre-order).
+     */
+    fun flatten(): List<DocNode> {
+        return buildList {
+            add(this@DocNode)
+            children?.forEach { addAll(it.flatten()) }
+        }
+    }
 }
 
 enum class DocumentEditorMode {
     Tree,
     Code,
+    Raw,
 }
 
 enum class DocumentEditorSource {

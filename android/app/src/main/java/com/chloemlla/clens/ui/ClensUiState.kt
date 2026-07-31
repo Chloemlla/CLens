@@ -12,6 +12,8 @@ import com.chloemlla.clens.core.mongo.QueryHistoryEntry
 import com.chloemlla.clens.core.mongo.QueryFavoriteEntry
 import com.chloemlla.clens.core.mongo.VisualFilterClause
 import com.chloemlla.clens.core.mongo.AuditLogEntry
+import com.chloemlla.clens.core.mongo.AggregateTemplateEntry
+import com.chloemlla.clens.core.mongo.ConnectionHealthScore
 import com.chloemlla.clens.core.mongo.CurrentOpSummary
 import com.chloemlla.clens.core.mongo.CollectionValidatorInfo
 import com.chloemlla.clens.core.mongo.OpsCounterSampleState
@@ -38,6 +40,7 @@ enum class DestructiveAction {
     DropDatabase,
     DropCollection,
     DeleteMany,
+    DeleteSelected,
     DropIndex,
     CompactCollection,
     DropUser,
@@ -73,14 +76,36 @@ data class PendingDestructiveAction(
     val confirmMode: DestructiveConfirmMode = DestructiveConfirmMode.TypeName,
 )
 
+/** State for the document diff dialog. */
+data class DiffState(
+    val originalJson: String,
+    val modifiedJson: String,
+    val /** Source label shown in the diff title */
+    sourceLabel: String = "文档对比",
+)
+
+/** Sort direction for Browse document results. */
+enum class SortDirection(val symbol: String, val mongoValue: Int) {
+    Ascending("↑", 1),
+    Descending("↓", -1),
+}
+
+/** A recently used sort entry for persistence display. */
+data class RecentSortEntry(
+    val field: String,
+    val direction: SortDirection,
+)
+
 data class BrowseTab(
     val id: String,
     val title: String,
     val selectedDatabase: String = "",
     val selectedCollection: String = "",
     val browseFilterJson: String = "{}",
-    val browseSortJson: String = "{\"_id\": 1}",
+    val browseSortJson: String = "{}",
     val browseProjectionJson: String = "{}",
+    val browseSortField: String? = null,
+    val browseSortDirection: SortDirection = SortDirection.Ascending,
     val documentSkip: Int = 0,
     val documentLimit: Int = 50,
     val documents: List<String> = emptyList(),
@@ -158,8 +183,14 @@ data class ClensUiState(
     val documentSkip: Int = 0,
     val documentLimit: Int = 50,
     val browseFilterJson: String = "{}",
-    val browseSortJson: String = "{\"_id\": 1}",
+    val browseSortJson: String = "{}",
     val browseProjectionJson: String = "{}",
+    /** Current sort field for Browse results (null = natural order). */
+    val browseSortField: String? = null,
+    /** Current sort direction for Browse results. */
+    val browseSortDirection: SortDirection = SortDirection.Ascending,
+    /** Recently used sorts per collection (connectionId:db:coll -> list of recent sort specs). */
+    val recentSorts: Map<String, List<RecentSortEntry>> = emptyMap(),
     val selectedDocumentJson: String = "",
     val editorJson: String = "{\n  \n}",
     val documentEditor: DocumentEditorState = DocumentEditorState(),
@@ -228,8 +259,25 @@ data class ClensUiState(
     val offlineSnapshots: List<OfflineSnapshotMeta> = emptyList(),
     val activeSnapshotId: String? = null,
     val offlineSnapshotNameInput: String = "",
+    /** Document diff dialog state. When non-null, the diff panel should be shown. */
+    val diffState: DiffState? = null,
+    /** JSON string of the document being compared "from" in the compare-with flow. */
+    val compareWithJson: String = "",
+    /** Whether the document picker for compare-with is active. */
+    val diffPickerActive: Boolean = false,
+    /** Multi-select mode state for batch operations. */
+    val isSelectMode: Boolean = false,
+    val selectedDocIds: Set<String> = emptySet(),
+    /** Keyboard navigation cursor index into [documents] list. */
+    val selectedDocIndex: Int = 0,
+    /** Transient feedback message shown briefly after a keyboard shortcut action. */
+    val shortcutFeedback: String? = null,
+    /** Bulk update bottom sheet state. */
+    val bulkUpdateField: String = "",
+    val bulkUpdateValue: String = "",
     val stagingItems: List<StagingItem> = emptyList(),
     val queryHistory: List<QueryHistoryEntry> = emptyList(),
+    val aggregateTemplates: List<AggregateTemplateEntry> = emptyList(),
     val auditLog: List<AuditLogEntry> = emptyList(),
     val currentOps: List<CurrentOpSummary> = emptyList(),
     val currentOpsListError: String? = null,
@@ -252,6 +300,14 @@ data class ClensUiState(
     val connectionHealthy: Boolean = true,
     val reconnecting: Boolean = false,
     val disconnectNotice: String? = null,
+    val healthScore: ConnectionHealthScore? = null,
+    val showHealthDetailSheet: Boolean = false,
+    /** Per-connection latency measurements keyed by connection profile id. */
+    val connectionLatencyMs: Map<String, Long> = emptyMap(),
+    /** Per-connection stale flags keyed by connection profile id. */
+    val connectionLatencyStale: Map<String, Boolean> = emptyMap(),
+    /** Per-connection measuring-in-progress flags keyed by connection profile id. */
+    val measuringLatency: Map<String, Boolean> = emptyMap(),
     /** Non-null when UI should launch ACCESS_LOCAL_NETWORK runtime request. */
     val pendingLocalNetworkPermission: PendingLocalNetworkPermission? = null,
     val loading: Boolean = false,

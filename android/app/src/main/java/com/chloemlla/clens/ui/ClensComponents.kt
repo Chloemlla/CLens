@@ -382,6 +382,63 @@ internal fun StatusPill(
     }
 }
 
+/**
+ * Returns the latency tier color based on RTT thresholds.
+ * Green < 50ms, Yellow 50-200ms, Red > 200ms.
+ */
+@Composable
+internal fun latencyBadgeColor(latencyMs: Long?): androidx.compose.ui.graphics.Color {
+    return when {
+        latencyMs == null -> MaterialTheme.colorScheme.outlineVariant
+        latencyMs < 50 -> MaterialTheme.colorScheme.primary
+        latencyMs < 200 -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.error
+    }
+}
+
+/**
+ * A small colored badge showing the RTT value.
+ * Tapping triggers a re-measurement.
+ */
+@Composable
+internal fun LatencyBadge(
+    latencyMs: Long?,
+    stale: Boolean,
+    measuring: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val color = latencyBadgeColor(latencyMs)
+    val staleIndicator = if (stale && latencyMs != null) " ↻" else ""
+
+    Surface(
+        modifier = modifier.clickable(onClick = onClick, enabled = !measuring),
+        shape = MaterialTheme.shapes.small,
+        color = color.copy(alpha = 0.15f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.5f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (measuring) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(10.dp),
+                    strokeWidth = 1.5.dp,
+                    color = color,
+                )
+            }
+            Text(
+                text = if (measuring) "" else (latencyMs?.toString()?.plus("ms") ?: "?") + staleIndicator,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+            )
+        }
+    }
+}
+
 @Composable
 internal fun SectionTitle(text: String, subtitle: String? = null, icon: ImageVector? = null) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

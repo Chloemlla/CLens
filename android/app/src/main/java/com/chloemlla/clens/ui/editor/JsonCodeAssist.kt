@@ -7,7 +7,15 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * Code-mode helpers: symbol insert, auto-close, smart indent, diagnostics.
+ * Validation result for JSON parsing.
+ */
+sealed class JsonValidationResult {
+    data class Valid(val formattedJson: String) : JsonValidationResult()
+    data class Invalid(val message: String, val line: Int? = null, val column: Int? = null) : JsonValidationResult()
+}
+
+/**
+ * Code-mode helpers: symbol insert, auto-close, smart indent, diagnostics, format/compact, validation.
  */
 object JsonCodeAssist {
     private val PAIR_CLOSE = mapOf(
@@ -232,6 +240,103 @@ object JsonCodeAssist {
             "expected" in lower && ("," in message || "comma" in lower) -> "可能缺少逗号或多余逗号"
             "expected" in lower && ("]" in message || "}" in message) -> "括号不匹配或结构不完整"
             else -> message
+        }
+    }
+
+    /**
+     * Minify JSON: remove all unnecessary whitespace.
+     */
+    fun compactJson(json: String): String {
+        val trimmed = json.trim()
+        if (trimmed.isEmpty()) return trimmed
+        return runCatching {
+            when (val value = JSONTokener(trimmed).nextValue()) {
+                is JSONObject -> value.toString()
+                is JSONArray -> value.toString()
+                else -> trimmed
+            }
+        }.getOrDefault(trimmed)
+    }
+
+    /**
+     * Validate JSON and return structured result with line/column on error.
+     */
+    fun validateJson(json: String): JsonValidationResult {
+        val trimmed = json.trim()
+        if (trimmed.isEmpty()) {
+            return JsonValidationResult.Invalid("JSON 不能为空", line = 1, column = 1)
+        }
+        return try {
+            when (val value = JSONTokener(trimmed).nextValue()) {
+                is JSONObject -> {
+                    val formatted = ensureMultilinePretty(value.toString(2), isArray = false)
+                    JsonValidationResult.Valid(formatted)
+                }
+                is JSONArray -> {
+                    val formatted = ensureMultilinePretty(value.toString(2), isArray = true)
+                    JsonValidationResult.Valid(formatted)
+                }
+                else -> {
+                    JsonValidationResult.Invalid("未知 JSON 类型", null, null)
+                }
+            }
+        } catch (error: Exception) {
+            val message = error.message ?: "JSON 语法错误"
+            val position = extractPosition(message)
+            val lineCol = position?.let { offsetToLineColumn(json, it) }
+            JsonValidationResult.Invalid(
+                message = humanizeJsonError(message),
+                line = lineCol?.first,
+                column = lineCol?.second,
+            )
+        }
+    }
+
+    /**
+     * Find the matching bracket position for the bracket at [cursor].
+     * Returns (cursorBracketIdx, matchingBracketIdx) or null.
+     */
+    fun findMatchingBracketPos(text: String, cursor: Int): Pair<Int, Int>? {
+        if (cursor !in text.indices) return null
+        val ch = text[cursor]
+        val isOpen = ch == '{' || ch == '['
+        val isClose = ch == '}' || ch == ']'
+        if (!isOpen && !isClose) return null
+        return findMatchingBracketImpl(text, cursor, ch)
+    }
+
+    private fun findMatchingBracketImpl(text: String, cursor: Int, bracket: Char): Pair<Int, Int>? {
+        val targetOpen = if (bracket == '}') '{' else '['
+        val targetClose = if (bracket == '}') '}' else ']'
+
+        return if (bracket == '{' || bracket == '[') {
+            var depth = 0
+            var i = cursor
+            while (i < text.length) {
+                val c = text[i]
+                if (c == targetOpen) depth++
+                if (c == targetClose) {
+                    depth--
+                    if (depth == 0) return cursor to i
+                }
+                if (c == '\\' && i + 1 < text.length) i++
+                i++
+            }
+            null
+        } else {
+            var depth = 0
+            var i = cursor
+            while (i >= 0) {
+                val c = text[i]
+                if (c == targetClose) depth++
+                if (c == targetOpen) {
+                    depth--
+                    if (depth == 0) return cursor to i
+                }
+                if (c == '\\' && i > 0) i--
+                i--
+            }
+            null
         }
     }
 }

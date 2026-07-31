@@ -39,6 +39,7 @@ class ClensViewModel(
     val state: StateFlow<ClensUiState> = _state.asStateFlow()
 
     private val actions = ClensActionRunner(viewModelScope, _state)
+    private val sessionHealth = SessionHealthController(null)
     private val ctx = ClensSessionContext(
         state = _state,
         appContext = appContext.applicationContext,
@@ -51,23 +52,51 @@ class ClensViewModel(
         sessionManager = sessionManager,
         repository = repository,
         actions = actions,
+        sessionHealth = sessionHealth,
     )
     private val connections = ConnectionController(ctx)
     private val browse = BrowseController(ctx)
     private val query = QueryController(ctx)
     private val admin = AdminController(ctx)
     private val advanced = AdvancedController(ctx)
-    private val sessionHealth = SessionHealthController(ctx)
 
     init {
+        sessionHealth.ctx = ctx
         ctx.refreshProfiles(status = "连接配置已加载")
         ctx.refreshLocalLists()
+        ctx.refreshLatencyState()
         _state.update {
             it.copy(
                 biometricEnabled = securityPrefs.isBiometricEnabled(),
                 themeMode = securityPrefs.getThemeMode(),
             )
         }
+    }
+
+    /**
+     * Route a keyboard shortcut to the active panel's handler.
+     * Returns true if the shortcut was handled.
+     */
+    fun handleShortcut(shortcut: KeyboardShortcut): Boolean {
+        val handled = when (state.value.selectedTab) {
+            ClensTab.Browse -> browse.handleShortcut(shortcut)
+            ClensTab.Query -> query.handleShortcut(shortcut)
+            else -> false
+        }
+        if (handled) {
+            showShortcutFeedback(shortcut.label)
+        }
+        return handled
+    }
+
+    /** Show a brief toast-style feedback for a keyboard shortcut action. */
+    fun showShortcutFeedback(message: String) {
+        _state.update { it.copy(shortcutFeedback = message) }
+    }
+
+    /** Clear the shortcut feedback message. */
+    fun clearShortcutFeedback() {
+        _state.update { it.copy(shortcutFeedback = null) }
     }
 
     fun selectTab(tab: ClensTab) {
@@ -109,6 +138,7 @@ class ClensViewModel(
     fun connect(profile: MongoConnectionProfile? = null) = connections.connect(profile) {
         browse.refreshDatabases(silent = true)
     }
+    fun measureConnectionLatency(profileId: String) = connections.measureConnectionLatency(profileId)
     fun disconnect() {
         advanced.stopChangeStream()
         admin.stopOpsCounterSampling(keepHistory = false)
@@ -141,6 +171,15 @@ class ClensViewModel(
     fun deleteDocuments(multi: Boolean) = browse.deleteDocuments(multi)
     fun requestDeleteMany() = browse.requestDeleteMany()
     fun deleteManyConfirmed() = browse.deleteManyConfirmed()
+    fun enterSelectMode(json: String) = browse.enterSelectMode(json)
+    fun exitSelectMode() = browse.exitSelectMode()
+    fun toggleDocumentSelection(json: String) = browse.toggleDocumentSelection(json)
+    fun selectAllOnPage() = browse.selectAllOnPage()
+    fun exportSelected(format: DocumentExportFormat) = browse.exportSelected(format)
+    fun requestDeleteSelected() = browse.requestDeleteSelected()
+    fun deleteSelectedConfirmed() = browse.deleteSelectedConfirmed()
+    fun applyBulkUpdate(fieldName: String, fieldValue: String) = browse.applyBulkUpdate(fieldName, fieldValue)
+    fun dismissBulkUpdateSheet() = browse.dismissBulkUpdateSheet()
     fun refreshDatabaseStats() = browse.refreshDatabaseStats()
     fun refreshCollectionStats() = browse.refreshCollectionStats()
     fun requestCompactCollection() = browse.requestCompactCollection()
@@ -171,6 +210,16 @@ class ClensViewModel(
     fun restoreQueryFavorite(id: String) = query.restoreQueryFavorite(id)
     fun deleteQueryFavorite(id: String) = query.deleteQueryFavorite(id)
     fun suggestedQueryFields(): List<String> = query.suggestedQueryFields()
+
+    fun saveAggregateTemplate(name: String, description: String, pipelineJson: String) =
+        query.saveAggregateTemplate(name, description, pipelineJson)
+
+    fun updateAggregateTemplate(id: String, name: String, description: String) =
+        query.updateAggregateTemplate(id, name, description)
+
+    fun loadAggregateTemplate(id: String): String? = query.loadAggregateTemplate(id)
+
+    fun deleteAggregateTemplate(id: String) = query.deleteAggregateTemplate(id)
 
     fun setVerticalCatalogListsEnabled(enabled: Boolean) {
         localStore.setVerticalCatalogListsEnabled(enabled)
@@ -282,8 +331,35 @@ class ClensViewModel(
     fun refreshDocumentDrafts() = browse.refreshDocumentDrafts()
     fun restoreDocumentDraftById(draftId: String) = browse.restoreDraftById(draftId)
     fun deleteDocumentDraftById(draftId: String) = browse.deleteDraftById(draftId)
+    fun applyBrowseSort(field: String, direction: SortDirection) = browse.setSort(field, direction)
+    fun clearBrowseSort() = browse.clearSort()
+    fun suggestedRecentSorts(): List<RecentSortEntry> = browse.getRecentSorts()
     fun refreshAuditLog() = advanced.refreshAuditLog()
     fun clearAuditLog() = advanced.clearAuditLog()
+
+    // --- Document Diff ---
+    fun showDocumentDiff(originalJson: String, modifiedJson: String, sourceLabel: String = "文档对比") {
+        _state.update { it.copy(diffState = DiffState(originalJson, modifiedJson, sourceLabel)) }
+    }
+
+    fun dismissDocumentDiff() {
+        _state.update { it.copy(diffState = null) }
+    }
+
+    fun openCompareWithPicker(json: String) {
+        _state.update { it.copy(compareWithJson = json, diffPickerActive = true) }
+    }
+
+    fun dismissCompareWithPicker() {
+        _state.update { it.copy(compareWithJson = "", diffPickerActive = false) }
+    }
+
+    fun compareWithSelectedDoc(targetJson: String, label: String = "与选中文档对比") {
+        val current = _state.value.compareWithJson
+        if (current.isBlank()) return
+        showDocumentDiff(current, targetJson, label)
+        dismissCompareWithPicker()
+    }
 
 
     fun onAppForeground() {
@@ -348,6 +424,7 @@ class ClensViewModel(
             DestructiveAction.DropDatabase -> browse.dropDatabaseConfirmed()
             DestructiveAction.DropCollection -> browse.dropCollectionConfirmed()
             DestructiveAction.DeleteMany -> browse.deleteManyConfirmed()
+            DestructiveAction.DeleteSelected -> browse.deleteSelectedConfirmed()
             DestructiveAction.DropIndex -> admin.dropIndexConfirmed()
             DestructiveAction.CompactCollection -> browse.compactCollectionConfirmed()
             DestructiveAction.DropUser -> advanced.dropUserConfirmed()

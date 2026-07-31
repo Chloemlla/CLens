@@ -1,6 +1,7 @@
 package com.chloemlla.clens.ui
 
 import com.chloemlla.clens.core.mongo.MongoAdminException
+import com.chloemlla.clens.core.mongo.QueryFieldInferencer
 import com.chloemlla.clens.core.storage.DocumentDraft
 import com.chloemlla.clens.core.export.DocumentExportCodecs
 import com.chloemlla.clens.core.export.DocumentExportFormat
@@ -66,6 +67,7 @@ class BrowseController(
         }
         if (value.isNotBlank() && state.value.isConnected) {
             refreshCollectionStats()
+            restoreBrowseSort()
         }
         refreshDocumentDrafts()
     }
@@ -675,6 +677,101 @@ class BrowseController(
         state.update { it.copy(resultViewMode = mode) }
     }
 
+    /**
+     * Apply a sort field and direction. Saves to LocalAppStore, updates state, and resets to page 1.
+     */
+    fun setSort(field: String, direction: SortDirection) {
+        val current = state.value
+        val connectionId = current.connectedProfileId ?: return
+        // Persist per-collection sort
+        localStore().setBrowseSort(connectionId, current.selectedDatabase, current.selectedCollection, field, direction.mongoValue)
+        // Update recent sorts list
+        val key = sortContextKey(current, connectionId)
+        val recentList = current.recentSorts[key] ?: emptyList()
+        val updatedEntry = RecentSortEntry(field = field, direction = direction)
+        val trimmed = (listOf(updatedEntry) + recentList.filterNot { it.field == field }).take(MAX_RECENT_SORTS)
+        state.update {
+            it.copy(
+                browseSortField = field,
+                browseSortDirection = direction,
+                documentSkip = 0,
+                recentSorts = it.recentSorts + (key to trimmed),
+            )
+        }
+    }
+
+    /**
+     * Clear the current sort (revert to natural order).
+     */
+    fun clearSort() {
+        val current = state.value
+        val connectionId = current.connectedProfileId
+        if (connectionId != null) {
+            localStore().clearBrowseSort(connectionId, current.selectedDatabase, current.selectedCollection)
+        }
+        state.update {
+            it.copy(
+                browseSortField = null,
+                browseSortDirection = SortDirection.Ascending,
+                documentSkip = 0,
+            )
+        }
+    }
+
+    /**
+     * Restore the saved sort for the currently selected collection from LocalAppStore.
+     * Called when the collection selection changes.
+     */
+    fun restoreBrowseSort() {
+        val current = state.value
+        val connectionId = current.connectedProfileId ?: return
+        val saved = localStore().getBrowseSort(connectionId, current.selectedDatabase, current.selectedCollection)
+        if (saved != null) {
+            val (field, direction) = saved
+            val dir = if (direction == -1) SortDirection.Descending else SortDirection.Ascending
+            state.update {
+                it.copy(
+                    browseSortField = field,
+                    browseSortDirection = dir,
+                )
+            }
+        } else {
+            state.update {
+                it.copy(
+                    browseSortField = null,
+                    browseSortDirection = SortDirection.Ascending,
+                )
+            }
+        }
+    }
+
+    /**
+     * Infer sortable top-level fields from the currently loaded documents.
+     * Returns a map of field name -> type label.
+     */
+    fun inferSortableFields(): Map<String, String> {
+        val fieldTypes = QueryFieldInferencer.inferFieldTypes(state.value.documents)
+        // Keep only top-level fields (no dots)
+        return fieldTypes.filter { !it.key.contains('.') }
+    }
+
+    /**
+     * Get recent sorts for the current collection context.
+     */
+    fun getRecentSorts(): List<RecentSortEntry> {
+        val current = state.value
+        val connectionId = current.connectedProfileId ?: return emptyList()
+        return current.recentSorts[sortContextKey(current, connectionId)] ?: emptyList()
+    }
+
+    private fun sortContextKey(current: ClensUiState, connectionId: String): String {
+        return "$connectionId:${current.selectedDatabase}:${current.selectedCollection}"
+    }
+
+    private fun localStore() = ctx.localStore
+
+    private const val MAX_RECENT_SORTS = 5
+
     fun loadCollectionValidator() {
         val database = state.value.selectedDatabase
         val collection = state.value.selectedCollection
@@ -724,19 +821,22 @@ class BrowseController(
     fun setDocumentEditorMode(mode: DocumentEditorMode) {
         state.update { current ->
             val editor = current.documentEditor
-            if (mode == DocumentEditorMode.Code) {
-                val code = runCatching { DocNodeCodec.serialize(editor.root) }.getOrDefault(editor.codeText)
-                current.copy(
-                    editorJson = code,
-                    documentEditor = editor.copy(
-                        mode = DocumentEditorMode.Code,
-                        codeText = code,
-                        codeDiagnostics = JsonCodeAssist.diagnosticMessages(code),
-                        parseError = null,
-                    ),
-                )
-            } else {
-                current.copy(documentEditor = editor.copy(mode = DocumentEditorMode.Tree))
+            when (mode) {
+                DocumentEditorMode.Code, DocumentEditorMode.Raw -> {
+                    val code = runCatching { DocNodeCodec.serialize(editor.root) }.getOrDefault(editor.codeText)
+                    current.copy(
+                        editorJson = code,
+                        documentEditor = editor.copy(
+                            mode = mode,
+                            codeText = code,
+                            codeDiagnostics = JsonCodeAssist.diagnosticMessages(code),
+                            parseError = null,
+                        ),
+                    )
+                }
+                DocumentEditorMode.Tree -> {
+                    current.copy(documentEditor = editor.copy(mode = DocumentEditorMode.Tree))
+                }
             }
         }
         persistDraft()
@@ -888,7 +988,11 @@ class BrowseController(
         val editor = buildEditorFromJson(
             json = draft.codeText,
             source = if (documentId == null) DocumentEditorSource.InsertBlank else DocumentEditorSource.SelectedDocument,
-            preferredMode = if (draft.mode == "code") DocumentEditorMode.Code else DocumentEditorMode.Tree,
+            preferredMode = when (draft.mode) {
+                "code" -> DocumentEditorMode.Code
+                "raw" -> DocumentEditorMode.Raw
+                else -> DocumentEditorMode.Tree
+            },
             draftId = draft.draftId,
             dirty = true,
         )
@@ -933,7 +1037,11 @@ class BrowseController(
         val editor = buildEditorFromJson(
             json = draft.codeText,
             source = if (draft.documentId == null) DocumentEditorSource.InsertBlank else DocumentEditorSource.SelectedDocument,
-            preferredMode = if (draft.mode == "code") DocumentEditorMode.Code else DocumentEditorMode.Tree,
+            preferredMode = when (draft.mode) {
+                "code" -> DocumentEditorMode.Code
+                "raw" -> DocumentEditorMode.Raw
+                else -> DocumentEditorMode.Tree
+            },
             draftId = draft.draftId,
             dirty = true,
         )
@@ -993,7 +1101,8 @@ class BrowseController(
             database = current.selectedDatabase,
             collection = current.selectedCollection,
             filterJson = current.browseFilterJson,
-            sortJson = current.browseSortJson,
+            sortField = current.browseSortField,
+            sortDirection = current.browseSortDirection.mongoValue,
             projectionJson = current.browseProjectionJson,
             limit = current.documentLimit,
             skip = current.documentSkip,
@@ -1045,7 +1154,7 @@ class BrowseController(
                 runCatching { DocNodeCodec.serialize(editor.root) }
                     .getOrElse { throw MongoAdminException.Validation(it.message ?: "文档树序列化失败") }
             }
-            DocumentEditorMode.Code -> {
+            DocumentEditorMode.Code, DocumentEditorMode.Raw -> {
                 val diagnostics = JsonCodeAssist.diagnosticMessages(editor.codeText)
                 if (diagnostics.isNotEmpty()) {
                     throw MongoAdminException.Validation(diagnostics.first())
@@ -1069,7 +1178,11 @@ class BrowseController(
             collection = current.selectedCollection,
             documentId = documentId,
             updatedAtMillis = System.currentTimeMillis(),
-            mode = if (current.documentEditor.mode == DocumentEditorMode.Code) "code" else "tree",
+            mode = when (current.documentEditor.mode) {
+                DocumentEditorMode.Code -> "code"
+                DocumentEditorMode.Raw -> "raw"
+                DocumentEditorMode.Tree -> "tree"
+            },
             codeText = current.documentEditor.codeText.ifBlank { current.editorJson },
             source = when (current.documentEditor.source) {
                 DocumentEditorSource.SelectedDocument -> "selected"
@@ -1251,6 +1364,267 @@ class BrowseController(
                     status = "当前页已导出为 " + format.extension.uppercase(),
                 )
             }
+        }
+    }
+
+    // --- Multi-select batch operations ---
+
+    /** Enter multi-select mode with the given document pre-selected. */
+    fun enterSelectMode(documentJson: String) {
+        val docId = extractDocumentId(documentJson) ?: return
+        state.update {
+            it.copy(
+                isSelectMode = true,
+                selectedDocIds = setOf(docId),
+            )
+        }
+    }
+
+    /** Exit multi-select mode and clear all selections. */
+    fun exitSelectMode() {
+        state.update {
+            it.copy(
+                isSelectMode = false,
+                selectedDocIds = emptySet(),
+            )
+        }
+    }
+
+    /**
+     * Toggle a document's selection. If select mode is not active, enter it.
+     * @param documentJson JSON string of the tapped document.
+     */
+    fun toggleDocumentSelection(documentJson: String) {
+        val docId = extractDocumentId(documentJson) ?: return
+        state.update { current ->
+            if (!current.isSelectMode) {
+                current.copy(
+                    isSelectMode = true,
+                    selectedDocIds = setOf(docId),
+                )
+            } else {
+                val updated = if (docId in current.selectedDocIds) {
+                    current.selectedDocIds - docId
+                } else {
+                    current.selectedDocIds + docId
+                }
+                if (updated.isEmpty()) {
+                    current.copy(isSelectMode = false, selectedDocIds = emptySet())
+                } else {
+                    current.copy(selectedDocIds = updated)
+                }
+            }
+        }
+    }
+
+    /** Select all documents currently visible on the page. */
+    fun selectAllOnPage() {
+        val pageIds = state.value.documents.mapNotNull { extractDocumentId(it) }.toSet()
+        state.update {
+            it.copy(selectedDocIds = pageIds)
+        }
+    }
+
+    /** Export the currently selected documents via the share sheet. */
+    fun exportSelected(format: DocumentExportFormat) {
+        val current = state.value
+        if (current.selectedDocIds.isEmpty()) {
+            state.update { it.copy(error = "没有选中的文档") }
+            return
+        }
+        val selectedDocs = current.documents.filter { doc ->
+            extractDocumentId(doc) in current.selectedDocIds
+        }
+        if (selectedDocs.isEmpty()) {
+            state.update { it.copy(error = "选中的文档不在当前页") }
+            return
+        }
+        ctx.actions.run("导出选中文档") {
+            val content = DocumentExportCodecs.encode(selectedDocs, format)
+            state.update {
+                it.copy(
+                    exportFormat = format,
+                    exportJson = content,
+                    status = "已导出 " + selectedDocs.size + " 条文档（" + format.extension.uppercase() + "）",
+                )
+            }
+        }
+    }
+
+    /** Request confirmation for deleting selected documents. */
+    fun requestDeleteSelected() {
+        val count = state.value.selectedDocIds.size
+        if (count == 0) return
+        ctx.ensureWritable("批量删除")
+        state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DeleteSelected,
+                    target = it.selectedCollection,
+                    message = "将删除选中的 " + count + " 条文档。请输入集合名确认。",
+                    confirmToken = it.selectedCollection,
+                    confirmMode = DestructiveConfirmMode.TypeName,
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    /** Execute the confirmed deletion of selected documents. */
+    fun deleteSelectedConfirmed() {
+        val current = state.value
+        if (current.selectedDocIds.isEmpty()) return
+        ctx.actions.run("删除选中文档") {
+            val deleted = repository.deleteMany(
+                current.selectedDatabase,
+                current.selectedCollection,
+                current.selectedDocIds.toList(),
+            )
+            state.update {
+                it.copy(
+                    isSelectMode = false,
+                    selectedDocIds = emptySet(),
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
+                )
+            }
+            loadDocumentsInternal(resetSkip = true)
+            ctx.recordAudit("deleteMany", current.selectedDatabase + "." + current.selectedCollection, "deleted=" + deleted)
+            state.update { it.copy(status = "已删除 " + deleted + " 条文档") }
+        }
+    }
+
+    /** State for the bulk update bottom sheet. */
+    private var pendingBulkUpdate: BulkUpdateState? = null
+
+    data class BulkUpdateState(
+        val fieldName: String,
+        val fieldValue: String,
+    )
+
+    /** Open the bulk update bottom sheet (caller sets UI state; this just stores intent). */
+    fun openBulkUpdateSheet(fieldName: String, fieldValue: String) {
+        pendingBulkUpdate = BulkUpdateState(fieldName, fieldValue)
+        state.update {
+            it.copy(
+                bulkUpdateField = fieldName,
+                bulkUpdateValue = fieldValue,
+            )
+        }
+    }
+
+    /** Apply the bulk update to all selected documents. */
+    fun applyBulkUpdate(fieldName: String, fieldValue: String) {
+        val current = state.value
+        if (current.selectedDocIds.isEmpty()) {
+            state.update { it.copy(error = "没有选中的文档") }
+            return
+        }
+        if (fieldName.isBlank()) {
+            state.update { it.copy(error = "字段名不能为空") }
+            return
+        }
+        ctx.ensureWritable("批量更新")
+        ctx.actions.run("批量更新选中文档") {
+            val updateDoc = buildString {
+                append("{ \"")
+                append(fieldName)
+                append("\": ")
+                append(fieldValue)
+                append(" }")
+            }
+            val modified = repository.updateMany(
+                current.selectedDatabase,
+                current.selectedCollection,
+                current.selectedDocIds.toList(),
+                updateDoc,
+            )
+            state.update {
+                it.copy(
+                    isSelectMode = false,
+                    selectedDocIds = emptySet(),
+                    bulkUpdateField = "",
+                    bulkUpdateValue = "",
+                )
+            }
+            loadDocumentsInternal()
+            ctx.recordAudit("updateMany", current.selectedDatabase + "." + current.selectedCollection, "modified=" + modified)
+            state.update { it.copy(status = "已更新 " + modified + " 条文档") }
+        }
+    }
+
+    /** Clear the bulk update state. */
+    fun dismissBulkUpdateSheet() {
+        pendingBulkUpdate = null
+        state.update {
+            it.copy(
+                bulkUpdateField = "",
+                bulkUpdateValue = "",
+            )
+        }
+    }
+
+    /**
+     * Handle keyboard shortcuts relevant to the Browse panel.
+     * Returns true if the shortcut was handled, false otherwise.
+     */
+    fun handleShortcut(shortcut: KeyboardShortcut): Boolean {
+        return when (shortcut) {
+            KeyboardShortcut.NavigateUp -> {
+                navigateDoc(-1)
+                true
+            }
+            KeyboardShortcut.NavigateDown -> {
+                navigateDoc(+1)
+                true
+            }
+            KeyboardShortcut.OpenDocument -> {
+                openCurrentDocument()
+                true
+            }
+            KeyboardShortcut.Escape -> {
+                if (state.value.isSelectMode) {
+                    exitSelectMode()
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardShortcut.Delete -> {
+                val current = state.value
+                if (current.isSelectMode && current.selectedDocIds.isNotEmpty()) {
+                    requestDeleteSelected()
+                    true
+                } else if (current.selectedDocumentJson.isNotBlank() && current.selectedCollection.isNotBlank()) {
+                    deleteDocuments(multi = false)
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyboardShortcut.NewDocument -> {
+                startBlankDocument()
+                state.update { it.copy(status = "新文档已创建") }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun navigateDoc(delta: Int) {
+        val docs = state.value.documents
+        if (docs.isEmpty()) return
+        val currentIndex = state.value.selectedDocIndex.coerceIn(0, docs.size - 1)
+        val nextIndex = (currentIndex + delta).coerceIn(0, docs.size - 1)
+        state.update { it.copy(selectedDocIndex = nextIndex, selectedDocumentJson = docs[nextIndex]) }
+        selectDocument(docs[nextIndex])
+    }
+
+    private fun openCurrentDocument() {
+        val docs = state.value.documents
+        val index = state.value.selectedDocIndex.coerceIn(0, docs.size - 1)
+        if (docs.isNotEmpty()) {
+            selectDocument(docs[index])
         }
     }
 }

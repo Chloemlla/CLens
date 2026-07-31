@@ -123,9 +123,31 @@ class MongoAdminRepository(
         limit: Int = 50,
         skip: Int = 0,
     ): DocumentPage = withContext(Dispatchers.IO) {
+        findDocuments(database, collection, filterJson, sortJson, projectionJson, null, 1, limit, skip)
+    }
+
+    /**
+     * Find documents with optional structured sort (sortField + sortDirection).
+     * When [sortField] is non-null, it takes precedence over [sortJson].
+     */
+    suspend fun findDocuments(
+        database: String,
+        collection: String,
+        filterJson: String,
+        sortJson: String,
+        projectionJson: String,
+        sortField: String?,
+        sortDirection: Int,
+        limit: Int,
+        skip: Int,
+    ): DocumentPage = withContext(Dispatchers.IO) {
         val coll = collection(database, collection)
         val filter = parseDocument(filterJson, "filter")
-        val sort = parseDocument(sortJson, "sort")
+        val sort = if (!sortField.isNullOrBlank()) {
+            Document(sortField, sortDirection)
+        } else {
+            parseDocument(sortJson, "sort")
+        }
         val projection = parseDocument(projectionJson, "projection")
         val safeLimit = limit.coerceIn(1, 500)
         val safeSkip = skip.coerceAtLeast(0)
@@ -210,6 +232,44 @@ class MongoAdminRepository(
         } else {
             coll.deleteOne(filter).deletedCount
         }
+    }
+
+    /**
+     * Delete multiple documents by their `_id` values.
+     * @param ids List of document `_id` values (as strings).
+     * @return Number of documents deleted.
+     */
+    suspend fun deleteMany(
+        database: String,
+        collection: String,
+        ids: List<String>,
+    ): Long = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext 0L
+        val coll = collection(database, collection)
+        val filter = Filters.`in`("_id", ids.mapNotNull { parseIdValue(it) })
+        coll.deleteMany(filter).deletedCount
+    }
+
+    /**
+     * Update multiple documents by their `_id` values with a `$set` update.
+     * @param ids List of document `_id` values (as strings).
+     * @param updateDocument JSON string representing the BSON document to `$set`.
+     * @return Number of documents modified.
+     */
+    suspend fun updateMany(
+        database: String,
+        collection: String,
+        ids: List<String>,
+        updateDocument: String,
+    ): Long = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext 0L
+        val coll = collection(database, collection)
+        val filter = Filters.`in`("_id", ids.mapNotNull { parseIdValue(it) })
+        val update = parseDocument(updateDocument, "update")
+        if (update.isEmpty) {
+            throw MongoAdminException.Validation("update 不能为空。")
+        }
+        coll.updateMany(filter, update).modifiedCount
     }
 
     suspend fun aggregate(
@@ -710,6 +770,20 @@ class MongoAdminRepository(
             throw MongoAdminException.Validation("无效的 ObjectId。")
         }
         return ObjectId(trimmed)
+    }
+
+    /**
+     * Parse a raw `_id` string into a BSON value (ObjectId for valid ObjectId strings, otherwise String).
+     * Returns null for blank input.
+     */
+    private fun parseIdValue(raw: String): Any? {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return null
+        return if (ObjectId.isValid(trimmed) && trimmed.length == 24) {
+            ObjectId(trimmed)
+        } else {
+            trimmed
+        }
     }
 
     private fun normalizeArrayField(raw: String, fieldName: String): Any {
