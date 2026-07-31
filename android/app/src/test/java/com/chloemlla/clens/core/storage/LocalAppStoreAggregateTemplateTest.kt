@@ -75,31 +75,36 @@ class LocalAppStoreAggregateTemplateTest {
     }
 
     private fun parseAggregateTemplates(raw: String): List<AggregateTemplateEntry> {
-        val top = JSONObject(raw)
-        val array = if (top.has("templates")) {
-            top.getJSONArray("templates")
-        } else {
-            JSONArray(raw)
-        }
-        return buildList {
-            for (i in 0 until array.length()) {
-                val o = array.getJSONObject(i)
-                add(
-                    AggregateTemplateEntry(
-                        id = o.optString("id", UUID.randomUUID().toString()),
-                        name = o.optString("name"),
-                        description = o.optString("description", ""),
-                        connectionId = if (o.has("connectionId") && !o.isNull("connectionId")) {
-                            o.getString("connectionId")
-                        } else {
-                            null
-                        },
-                        pipelineJson = o.optString("pipelineJson", "[]"),
-                        createdAtMillis = o.optLong("createdAtMillis", System.currentTimeMillis()),
-                        updatedAtMillis = o.optLong("updatedAtMillis", System.currentTimeMillis()),
-                    ),
-                )
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        return try {
+            val array = when {
+                trimmed.startsWith("{") -> JSONObject(trimmed).optJSONArray("templates") ?: return emptyList()
+                trimmed.startsWith("[") -> JSONArray(trimmed)
+                else -> return emptyList()
             }
+            buildList {
+                for (i in 0 until array.length()) {
+                    val o = array.optJSONObject(i) ?: continue
+                    add(
+                        AggregateTemplateEntry(
+                            id = o.optString("id", UUID.randomUUID().toString()),
+                            name = o.optString("name"),
+                            description = o.optString("description", ""),
+                            connectionId = if (o.has("connectionId") && !o.isNull("connectionId")) {
+                                o.getString("connectionId")
+                            } else {
+                                null
+                            },
+                            pipelineJson = o.optString("pipelineJson", "[]"),
+                            createdAtMillis = o.optLong("createdAtMillis", System.currentTimeMillis()),
+                            updatedAtMillis = o.optLong("updatedAtMillis", System.currentTimeMillis()),
+                        ),
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 

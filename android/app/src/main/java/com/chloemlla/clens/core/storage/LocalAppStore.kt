@@ -151,17 +151,23 @@ class LocalAppStore(context: Context) {
     }
 
     private fun parseAggregateTemplates(raw: String): List<AggregateTemplateEntry> {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return emptyList()
         return try {
-            val top = JSONObject(raw)
-            val array = if (top.has("templates")) {
-                top.getJSONArray("templates")
-            } else {
-                // Legacy flat array
-                JSONArray(raw)
+            val array = when {
+                trimmed.startsWith("{") -> {
+                    // Current format: an object containing the templates array.
+                    JSONObject(trimmed).optJSONArray("templates") ?: return emptyList()
+                }
+                trimmed.startsWith("[") -> {
+                    // Legacy format: the templates array was stored directly.
+                    JSONArray(trimmed)
+                }
+                else -> return emptyList()
             }
             buildList {
                 for (i in 0 until array.length()) {
-                    val o = array.getJSONObject(i)
+                    val o = array.optJSONObject(i) ?: continue
                     add(
                         AggregateTemplateEntry(
                             id = o.optString("id", UUID.randomUUID().toString()),

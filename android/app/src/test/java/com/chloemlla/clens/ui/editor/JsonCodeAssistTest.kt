@@ -129,11 +129,11 @@ class JsonCodeAssistTest {
         val text = """{"a":1}"""
         // Position at '{'
         val pair = JsonCodeAssist.findMatchingBracketPos(text, 0)
-        assertEquals(Pair(0, 7), pair)
+        assertEquals(Pair(0, 6), pair)
 
         // Position at '}'
-        val pair2 = JsonCodeAssist.findMatchingBracketPos(text, 7)
-        assertEquals(Pair(7, 0), pair2)
+        val pair2 = JsonCodeAssist.findMatchingBracketPos(text, 6)
+        assertEquals(Pair(6, 0), pair2)
     }
 
     @Test
@@ -141,7 +141,7 @@ class JsonCodeAssistTest {
         val text = """{"a":{"b":1}}"""
         // Position at outer '{'
         val pair = JsonCodeAssist.findMatchingBracketPos(text, 0)
-        assertEquals(Pair(0, 13), pair)
+        assertEquals(Pair(0, 12), pair)
 
         // Position at inner '{' (after "a":)
         val pair2 = JsonCodeAssist.findMatchingBracketPos(text, 5)
@@ -153,11 +153,11 @@ class JsonCodeAssistTest {
         val text = """[1, [2, 3], 4]"""
         // Position at outer '['
         val pair = JsonCodeAssist.findMatchingBracketPos(text, 0)
-        assertEquals(Pair(0, 14), pair)
+        assertEquals(Pair(0, 13), pair)
 
         // Position at inner '['
         val pair2 = JsonCodeAssist.findMatchingBracketPos(text, 4)
-        assertEquals(Pair(4, 11), pair2)
+        assertEquals(Pair(4, 9), pair2)
     }
 
     @Test
@@ -188,7 +188,7 @@ class JsonCodeAssistTest {
 
         // Tree -> Raw
         val rawJson = DocNodeCodec.serialize(root)
-        assertEquals(originalJson, rawJson)
+        assertEquals(originalJson, JsonCodeAssist.compactJson(rawJson))
 
         // Raw -> validate
         val validation = JsonCodeAssist.validateJson(rawJson)

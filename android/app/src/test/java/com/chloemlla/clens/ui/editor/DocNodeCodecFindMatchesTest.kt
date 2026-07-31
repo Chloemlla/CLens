@@ -12,8 +12,7 @@ class DocNodeCodecFindMatchesTest {
         val matches = DocNodeCodec.findMatches(root, "name")
         val paths = matches.map { it.pathKey }
         assertTrue(paths.contains("username"))
-        assertTrue(paths.contains("password"))
-        assertTrue(paths.contains("email"))
+        assertEquals(1, paths.size)
     }
 
     @Test

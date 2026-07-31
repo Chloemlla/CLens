@@ -306,37 +306,57 @@ object JsonCodeAssist {
     }
 
     private fun findMatchingBracketImpl(text: String, cursor: Int, bracket: Char): Pair<Int, Int>? {
-        val targetOpen = if (bracket == '}') '{' else '['
-        val targetClose = if (bracket == '}') '}' else ']'
-
-        return if (bracket == '{' || bracket == '[') {
-            var depth = 0
-            var i = cursor
-            while (i < text.length) {
-                val c = text[i]
-                if (c == targetOpen) depth++
-                if (c == targetClose) {
-                    depth--
-                    if (depth == 0) return cursor to i
-                }
-                if (c == '\\' && i + 1 < text.length) i++
-                i++
-            }
-            null
-        } else {
-            var depth = 0
-            var i = cursor
-            while (i >= 0) {
-                val c = text[i]
-                if (c == targetClose) depth++
-                if (c == targetOpen) {
-                    depth--
-                    if (depth == 0) return cursor to i
-                }
-                if (c == '\\' && i > 0) i--
-                i--
-            }
-            null
+        val targetOpen = when (bracket) {
+            '{', '}' -> '{'
+            '[', ']' -> '['
+            else -> return null
         }
+        val targetClose = when (bracket) {
+            '{', '}' -> '}'
+            '[', ']' -> ']'
+            else -> return null
+        }
+        val stack = java.util.ArrayDeque<Int>()
+        var inString = false
+        var escaped = false
+
+        if (bracket == targetOpen) {
+            for (i in cursor until text.length) {
+                val c = text[i]
+                if (inString) {
+                    if (escaped) escaped = false
+                    else if (c == '\\') escaped = true
+                    else if (c == '"') inString = false
+                    continue
+                }
+                if (c == '"') {
+                    inString = true
+                } else if (c == targetOpen) {
+                    stack.addLast(i)
+                } else if (c == targetClose && stack.isNotEmpty()) {
+                    val open = stack.removeLast()
+                    if (stack.isEmpty() && open == cursor) return cursor to i
+                }
+            }
+        } else {
+            for (i in 0..cursor) {
+                val c = text[i]
+                if (inString) {
+                    if (escaped) escaped = false
+                    else if (c == '\\') escaped = true
+                    else if (c == '"') inString = false
+                    continue
+                }
+                if (c == '"') {
+                    inString = true
+                } else if (c == targetOpen) {
+                    stack.addLast(i)
+                } else if (c == targetClose && stack.isNotEmpty()) {
+                    val open = stack.removeLast()
+                    if (i == cursor) return cursor to open
+                }
+            }
+        }
+        return null
     }
 }
