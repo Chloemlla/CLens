@@ -81,7 +81,7 @@ class DocNodeCodecFindMatchesTest {
 
     @Test
     fun findMatches_withObjectId() {
-        val root = DocNodeCodec.parse("""{"_id":{"$oid":"507f1f77bcf86cd799439011"}}""")
+        val root = DocNodeCodec.parse("""{"_id":{"${'$'}oid":"507f1f77bcf86cd799439011"}}""")
         val matches = DocNodeCodec.findMatches(root, "507f1f77")
         assertTrue(matches.isNotEmpty())
         assertEquals(DocValueType.ObjectId, matches[0].type)
@@ -89,7 +89,7 @@ class DocNodeCodecFindMatchesTest {
 
     @Test
     fun findMatches_withDate() {
-        val root = DocNodeCodec.parse("""{"created":{"$date":"2024-01-15T10:30:00.000Z"}}""")
+        val root = DocNodeCodec.parse("""{"created":{"${'$'}date":"2024-01-15T10:30:00.000Z"}}""")
         val matches = DocNodeCodec.findMatches(root, "2024")
         assertTrue(matches.isNotEmpty())
     }

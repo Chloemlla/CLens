@@ -112,7 +112,7 @@ class LocalAppStoreAggregateTemplateTest {
             name = "Daily Active Users",
             description = "Count DAU by hour",
             connectionId = "conn-123",
-            pipelineJson = """[{"$match":{"createdAt":{"$gte":{"$date":"2024-01-01T00:00:00Z"}}}}]""",
+            pipelineJson = """[{"${'$'}match":{"createdAt":{"${'$'}gte":{"${'$'}date":"2024-01-01T00:00:00Z"}}}}]""",
             createdAtMillis = 1_000_000L,
             updatedAtMillis = 2_000_000L,
         )
@@ -137,7 +137,7 @@ class LocalAppStoreAggregateTemplateTest {
             name = "Global Template",
             description = "Works on any connection",
             connectionId = null,
-            pipelineJson = """[{"$match":{"active":true}}]""",
+            pipelineJson = """[{"${'$'}match":{"active":true}}]""",
         )
         val json = serializeTemplates(listOf(entry))
         val parsed = parseAggregateTemplates(json)

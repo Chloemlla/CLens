@@ -202,8 +202,8 @@ class DocumentDiffTest {
 
     @Test
     fun objectIdComparison() {
-        val original = """{"_id":{"$oid":"507f1f77bcf86cd799439011"}}"""
-        val modified = """{"_id":{"$oid":"507f1f77bcf86cd799439012"}}"""
+        val original = """{"_id":{"${'$'}oid":"507f1f77bcf86cd799439011"}}"""
+        val modified = """{"_id":{"${'$'}oid":"507f1f77bcf86cd799439012"}}"""
         val diffs = computeDiff(original, modified)
         assertEquals(1, diffs.size)
         assertEquals(DiffStatus.MODIFIED, diffs[0].status)
@@ -211,7 +211,7 @@ class DocumentDiffTest {
 
     @Test
     fun identicalObjectIdUnchanged() {
-        val json = """{"_id":{"$oid":"507f1f77bcf86cd799439011"},"name":"test"}"""
+        val json = """{"_id":{"${'$'}oid":"507f1f77bcf86cd799439011"},"name":"test"}"""
         val diffs = computeDiff(json, json)
         assertTrue(diffs.all { it.status == DiffStatus.UNCHANGED })
     }

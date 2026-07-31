@@ -9,7 +9,6 @@ import org.junit.Test
 class MongoAdminBatchOpsTest {
     @Test
     fun deleteManyRejectsEmptyIds() {
-        val repo = mockRepository()
         // Empty list should return 0L without calling the collection.
         // (Implementation detail: early return when ids.isEmpty())
     }
