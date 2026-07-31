@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -723,7 +724,7 @@ private fun BulkUpdateSheet(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 Text(
-                    text = "将字段值设置为指定内容（使用 $set 操作符）",
+                    text = "将字段值设置为指定内容（使用 \$set 操作符）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -764,4 +765,3 @@ private fun BulkUpdateSheet(
         }
     }
 }
-

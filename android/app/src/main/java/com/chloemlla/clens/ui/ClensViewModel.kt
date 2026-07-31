@@ -39,7 +39,7 @@ class ClensViewModel(
     val state: StateFlow<ClensUiState> = _state.asStateFlow()
 
     private val actions = ClensActionRunner(viewModelScope, _state)
-    private val sessionHealth = SessionHealthController(null)
+    private val sessionHealth = SessionHealthController(sessionManager)
     private val ctx = ClensSessionContext(
         state = _state,
         appContext = appContext.applicationContext,
@@ -501,7 +501,6 @@ class ClensViewModel(
         }
     }
 }
-
 
 
 

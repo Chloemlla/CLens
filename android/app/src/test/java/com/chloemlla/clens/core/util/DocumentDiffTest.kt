@@ -179,6 +179,17 @@ class DocumentDiffTest {
     }
 
     @Test
+    fun stringNullRemainsDistinctFromJsonNull() {
+        val diffs = computeDiff(
+            """{"text":"null","actual":null}""",
+            """{"text":"null","actual":null}""",
+        )
+
+        assertEquals("null", diffs.find { it.path == "text" }?.originalValue)
+        assertEquals(null, diffs.find { it.path == "actual" }?.originalValue)
+    }
+
+    @Test
     fun nullFieldOnlyInOriginalIsRemoved() {
         val original = """{"field":null}"""
         val modified = """{}"""

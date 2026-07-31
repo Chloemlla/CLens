@@ -22,6 +22,8 @@ import java.util.UUID
 import kotlinx.coroutines.flow.update
 import org.json.JSONObject
 
+private const val MAX_RECENT_SORTS = 5
+
 class BrowseController(
     private val ctx: ClensSessionContext,
 ) {
@@ -770,8 +772,6 @@ class BrowseController(
 
     private fun localStore() = ctx.localStore
 
-    private const val MAX_RECENT_SORTS = 5
-
     fun loadCollectionValidator() {
         val database = state.value.selectedDatabase
         val collection = state.value.selectedCollection
@@ -1101,6 +1101,7 @@ class BrowseController(
             database = current.selectedDatabase,
             collection = current.selectedCollection,
             filterJson = current.browseFilterJson,
+            sortJson = current.browseSortJson,
             sortField = current.browseSortField,
             sortDirection = current.browseSortDirection.mongoValue,
             projectionJson = current.browseProjectionJson,

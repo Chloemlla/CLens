@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +28,7 @@ import com.chloemlla.clens.ui.query.SaveAggregateTemplateDialog
 import com.chloemlla.clens.ui.query.VisualQueryBuilder
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
     PanelColumn(state = state, onDismissFeedback = viewModel::clearFeedback) {

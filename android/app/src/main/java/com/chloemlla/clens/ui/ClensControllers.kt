@@ -1,5 +1,7 @@
 package com.chloemlla.clens.ui
 
+import com.chloemlla.clens.core.mongo.ConnectionHealthScore
+import com.chloemlla.clens.core.mongo.ConnectionTestResult
 import com.chloemlla.clens.core.mongo.MongoAdminException
 import com.chloemlla.clens.core.mongo.MongoAdminRepository
 import com.chloemlla.clens.core.mongo.MongoConnectionProfile
@@ -447,11 +449,12 @@ class ConnectionController(
     }
 }
 
-class SessionHealthController {
+class SessionHealthController(
+    private val sessionManager: MongoSessionManager,
+) {
     lateinit var ctx: ClensSessionContext
 
     private val state get() = ctx.state
-    private val sessionManager get() = ctx.sessionManager
     private val monitor = SessionHealthMonitor(sessionManager)
 
     private val callbacks = object : SessionHealthCallbacks {
@@ -670,4 +673,3 @@ class SessionHealthController {
         }
     }
 }
-

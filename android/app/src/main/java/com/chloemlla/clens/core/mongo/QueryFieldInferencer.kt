@@ -4,17 +4,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
+ * Result of field inference: field name -> JSON type label.
+ * Type labels: "string", "number", "boolean", "object", "array", "null", "unknown".
+ */
+typealias FieldTypeMap = Map<String, String>
+
+/**
  * Best-effort field name inference for the visual find builder.
  * Sources: sample document JSON strings + index key JSON strings.
  * Manual field entry is always allowed by the UI even when inference returns empty.
  */
 object QueryFieldInferencer {
-    /**
-     * Result of field inference: field name -> JSON type label.
-     * Type labels: "string", "number", "boolean", "object", "array", "null", "unknown".
-     */
-    typealias FieldTypeMap = Map<String, String>
-
     fun inferFieldNames(
         sampleDocumentsJson: List<String> = emptyList(),
         indexKeysJson: List<String> = emptyList(),

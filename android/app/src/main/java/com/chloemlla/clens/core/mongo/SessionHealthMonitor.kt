@@ -3,6 +3,7 @@ package com.chloemlla.clens.core.mongo
 import kotlin.math.min
 import kotlinx.coroutines.delay
 import org.bson.BsonDocument
+import org.bson.BsonInt32
 
 /**
  * Lightweight session probe + bounded reconnect helper.
@@ -37,7 +38,7 @@ class SessionHealthMonitor(
             val start = System.currentTimeMillis()
             val result = sessionManager.requireClient()
                 .getDatabase("admin")
-                .runCommand(BsonDocument("ping", 1))
+                .runCommand(BsonDocument("ping", BsonInt32(1)))
             val latency = System.currentTimeMillis() - start
             if (isCommandOk(result)) latency else null
         } catch (e: Throwable) {

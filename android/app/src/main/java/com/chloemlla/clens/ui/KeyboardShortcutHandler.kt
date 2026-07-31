@@ -2,6 +2,11 @@ package com.chloemlla.clens.ui
 
 import android.view.InputDevice
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 
 /**
  * Detects whether an external (physical) keyboard is connected to the device.
