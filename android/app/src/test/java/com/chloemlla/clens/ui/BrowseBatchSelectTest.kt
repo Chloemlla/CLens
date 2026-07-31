@@ -24,7 +24,7 @@ class BrowseBatchSelectTest {
 
     @Test
     fun extractDocumentIdParsesObjectId() {
-        val json = """{"_id":{"\$oid":"507f1f77bcf86cd799439011"},"name":"bob"}"""
+        val json = """{"_id":{"${'$'}oid":"507f1f77bcf86cd799439011"},"name":"bob"}"""
         val id = extractDocId(json)
         assertEquals("507f1f77bcf86cd799439011", id)
     }
