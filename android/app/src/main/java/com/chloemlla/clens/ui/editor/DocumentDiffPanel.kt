@@ -274,8 +274,8 @@ private fun SideBySideDiffView(
                     SideBySideFieldRow(
                         diff = diff,
                         side = Side.Original,
-                        onApply = if (onApplyToOriginal != null && diff.status != DiffStatus.ADDED) {
-                            { onApplyToOriginal(diff) }
+                        onApply = if (onApplyToModified != null && diff.status != DiffStatus.ADDED) {
+                            { onApplyToModified(diff) }
                         } else null,
                         showApply = applyDirection == DiffApplyDirection.OriginalToModified,
                     )
@@ -311,8 +311,8 @@ private fun SideBySideDiffView(
                     SideBySideFieldRow(
                         diff = diff,
                         side = Side.Modified,
-                        onApply = if (onApplyToModified != null && diff.status != DiffStatus.REMOVED) {
-                            { onApplyToModified(diff) }
+                        onApply = if (onApplyToOriginal != null && diff.status != DiffStatus.REMOVED) {
+                            { onApplyToOriginal(diff) }
                         } else null,
                         showApply = applyDirection == DiffApplyDirection.ModifiedToOriginal,
                     )
@@ -375,7 +375,7 @@ private fun SideBySideFieldRow(
                     diff.status == DiffStatus.REMOVED && side == Side.Original -> removedColor()
                     diff.status == DiffStatus.ADDED && side == Side.Modified -> addedColor()
                     diff.status == DiffStatus.MODIFIED -> modifiedColor()
-                    else -> MaterialTheme.colorScheme.onSurface,
+                    else -> MaterialTheme.colorScheme.onSurface
                 },
                 maxLines = 3,
             )
@@ -414,8 +414,8 @@ private fun InlineDiffView(
         itemsIndexed(diffs, key = { _, diff -> "inline_${diff.path}" }) { _, diff ->
             InlineFieldRow(
                 diff = diff,
-                onApplyToOriginal = onApplyToModified,
-                onApplyToModified = onApplyOriginalToModified,
+                onApplyToOriginal = onApplyToOriginal,
+                onApplyToModified = onApplyToModified,
                 applyDirection = applyDirection,
             )
         }
