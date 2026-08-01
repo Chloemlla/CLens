@@ -6,6 +6,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Android%2026%2B-3DDC84?logo=android&logoColor=white)](#运行要求)
+[![Responsive UI](https://img.shields.io/badge/UI-响应式%20%7C%20扫描通过-22AA88?logo=android&logoColor=white)](./docs/uiux-review-2026-08-01.md)
 
 面向完整 MongoDB 管理场景的 Android Kotlin 客户端。
 
@@ -39,6 +40,15 @@
 - 集合 Validator 管理
 - 生物识别应用锁 + 分级危险确认
 - Keep-alive / 重连横幅
+- **响应式布局** — 所有 Compose 面板适配 360dp+ 屏幕，消除溢出和硬编码尺寸反模式
+
+### UI / UX（2026-08）
+- **响应式布局审计** — 扫描 20+ 个 Compose 页面；硬编码尺寸替换为 fillMaxWidth/weight、可滚动 Row、文本溢出保护
+- **小屏验证** — 在 360dp 宽度下验证布局，无溢出条纹、无控件截断
+- **管理面板** — 操作栏使用 horizontalScroll 支持多按钮行
+- **浏览面板** — 文档卡片使用 weight 替代固定宽度
+- **排序选择器** — Row 子项使用 weight 均分可用空间
+- **连接表单** — ClensApp 布局使用 fillMaxWidth 实现响应式表单字段
 
 ### 离线缓存与数据交接
 - **命名离线快照** — 保存当前 filter 前 N 条文档，无网只读翻看
@@ -169,6 +179,19 @@ flowchart LR
 > [!CAUTION]
 > 二进制 `mongodump` `.bson` **不在范围内**。
 > 大结果导入导出有硬上限以保护手机内存；优先用过滤快照与分片导入。
+
+---
+
+## 响应式 UI
+
+CLens 面向手机尺寸屏幕（360dp+）。所有 Compose 布局均已扫描并验证：
+
+- **无硬编码溢出宽度** — 优先使用 Modifier.fillMaxWidth() / weight() 替代固定 dp
+- **可滚动行** — 动态内容 Row 使用 horizontalScroll
+- **文本溢出保护** — 所有受约束标签添加 maxLines + TextOverflow.Ellipsis
+- **自适应尺寸** — 使用 BoxWithConstraints / LayoutBuilder 实现容器相对尺寸
+
+完整扫描报告：[`docs/uiux-review-2026-08-01.md`](./docs/uiux-review-2026-08-01.md)
 
 ---
 
