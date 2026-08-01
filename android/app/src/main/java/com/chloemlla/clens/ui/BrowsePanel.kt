@@ -94,6 +94,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 state.browseTabs.forEach { tab ->
                     FilterChip(
@@ -102,10 +103,12 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                         enabled = !state.loading,
                         label = { Text(tab.title) },
                     )
-                    OutlinedButton(
+                    IconButton(
                         onClick = { viewModel.closeBrowseTab(tab.id) },
                         enabled = !state.loading,
-                    ) { Text("×") }
+                    ) {
+                        Icon(Icons.Outlined.Close, contentDescription = "关闭标签")
+                    }
                 }
             }
         }
