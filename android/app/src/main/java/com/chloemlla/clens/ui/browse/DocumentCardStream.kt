@@ -100,6 +100,8 @@ internal fun DocumentCardStream(
                         Text(
                             text = titlePrefix + " #" + (startIndex + index),
                             style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             color = if (isSelected) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
                             } else {

@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.chloemlla.clens.ui.monitor.CurrentOpFilter
 import com.chloemlla.clens.ui.monitor.CurrentOpFilters
@@ -243,6 +244,9 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                             ) {
                                 Text(
                                     text = "opid " + op.opId,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 if (slow) {
