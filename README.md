@@ -6,6 +6,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](./LICENSE)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Android%2026%2B-3DDC84?logo=android&logoColor=white)](#requirements)
+[![Responsive UI](https://img.shields.io/badge/UI-Responsive%20%7C%20Scan%20Passed-22AA88?logo=android&logoColor=white)](./docs/uiux-review-2026-08-01.md)
 
 Android Kotlin client for full MongoDB database administration.
 
@@ -39,6 +40,7 @@ Android Kotlin client for full MongoDB database administration.
 - Collection validator management
 - Biometric app lock + tiered destructive confirm
 - Keep-alive / reconnect banner
+- **Responsive layout** — all Compose panels adapt to 360dp+ screens; overflow and hardcoded-size anti-patterns eliminated
 
 ### Offline cache and data handoff
 - **Named offline snapshots** — save current filter first-N docs; browse read-only offline
@@ -169,6 +171,19 @@ Triggers (path-filtered):
 > [!CAUTION]
 > Binary `mongodump` `.bson` is **out of scope**.
 > Large exports/imports are hard-capped to protect phone memory; prefer filtered snapshots and chunked imports.
+
+---
+
+## Responsive UI
+
+CLens targets phone-size screens (360dp+). All Compose layouts are scanned and verified for:
+
+- **No hardcoded overflow widths** — Modifier.fillMaxWidth() / weight() preferred over fixed dp
+- **Scrollable rows** — Row with dynamic content uses horizontalScroll
+- **Text overflow protection** — maxLines + TextOverflow.Ellipsis on all constrained labels
+- **Adaptive sizing** — BoxWithConstraints / LayoutBuilder for container-relative dimensions
+
+Full scan report: [`docs/uiux-review-2026-08-01.md`](./docs/uiux-review-2026-08-01.md)
 
 ---
 
