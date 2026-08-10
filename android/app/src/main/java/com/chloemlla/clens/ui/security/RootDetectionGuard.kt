@@ -1,6 +1,7 @@
 package com.chloemlla.clens.ui.security
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import java.io.File
 
@@ -47,6 +48,35 @@ object RootDetectionGuard {
                     }
                 }
             }
+        }
+
+        runCatching {
+            if (File("/data/adb/magisk").exists() ||
+                File("/data/adb/magisk.img").exists() ||
+                File("/data/adb/magisk.db").exists()
+            ) {
+                findings.add("magisk-v2")
+            }
+        }
+
+        runCatching {
+            if (File("/system/xbin/busybox").exists() || File("/system/bin/busybox").exists()) {
+                findings.add("busybox")
+            }
+        }
+
+        runCatching {
+            System.getenv("PATH")?.split(":")?.forEach { dir ->
+                if (File("$dir/su").exists()) {
+                    findings.add("su-on-path")
+                    return@forEach
+                }
+            }
+        }
+
+        runCatching {
+            context.packageManager.getPackageInfo("com.topjohnwu.magisk", 0)
+            findings.add("magisk-package")
         }
 
         return findings
