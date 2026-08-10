@@ -7,6 +7,7 @@ import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import com.chloemlla.lumen.crash.CrashReport
 import com.chloemlla.lumen.crash.LumenCrash
 import com.chloemlla.lumen.crash.LumenCrashConfig
+import com.chloemlla.clens.ui.security.HardeningGate
 
 class ClensApplication : Application() {
     @Volatile
@@ -18,6 +19,7 @@ class ClensApplication : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         installLumenCrashSdk()
+        HardeningGate.bootstrap(this)
         recordBreadcrumbSafe("Application.attachBaseContext")
     }
 

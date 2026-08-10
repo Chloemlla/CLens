@@ -156,3 +156,6 @@
 -dontwarn net.i2p.crypto.eddsa.**
 -dontwarn sun.security.**
 -dontwarn sun.security.x509.X509Key
+
+# Allow R8 to broaden field/method access for stronger obfuscation without repackaging classes.
+-allowaccessmodification
