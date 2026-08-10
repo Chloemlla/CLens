@@ -33,6 +33,7 @@ import com.chloemlla.clens.ui.ClensApp
 import com.chloemlla.clens.ui.ClensTheme
 import com.chloemlla.clens.ui.ClensViewModel
 import com.chloemlla.clens.ui.security.BiometricLockGate
+import com.chloemlla.clens.ui.security.ScreenCaptureJail
 import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import com.chloemlla.lumen.crash.LumenCrash
 import com.chloemlla.lumen.crash.ui.LumenCrashReportScreen
@@ -47,6 +48,7 @@ class MainActivity : FragmentActivity() {
         // the Compose root when the IME opens (product requirement for editors).
         // This is not the deprecated opt-out flag; predictive back is enabled in the manifest.
         WindowCompat.setDecorFitsSystemWindows(window, true)
+        ScreenCaptureJail.apply(window)
         recordBreadcrumbSafe("MainActivity.onCreate")
 
         val app = application as ClensApplication
