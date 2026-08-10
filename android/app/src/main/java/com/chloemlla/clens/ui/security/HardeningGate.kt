@@ -6,45 +6,79 @@ import android.util.Log
 import com.chloemlla.clens.BuildConfig
 import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import com.chloemlla.lumen.crash.LumenCrash
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Central anti-tamper gate. Runs once at app startup and evaluates every
  * detection guard. In release builds a concrete detection (debugger, root,
- * emulator) terminates the process so the app cannot be analyzed on a hostile
- * environment. Debug builds only log, so development is unaffected.
+ * emulator, Frida, Xposed) terminates the process so the app cannot be
+ * analyzed on a hostile environment. Debug builds only log, so development is
+ * unaffected.
+ *
+ * A periodic watchdog re-checks the vectors whose presence can change after
+ * startup (a debugger can attach, Frida/Xposed can inject at any time) and
+ * enforces the same kill policy in release builds.
  */
 object HardeningGate {
     @Volatile
     private var ran = false
 
+    private val watchdogScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun bootstrap(context: Context) {
         if (ran) return
         ran = true
 
-        val threats = mutableListOf<String>()
-        runCatching { threats += AntiDebugGuard.assess(context) }
-            .onFailure { Log.w(TAG, "AntiDebugGuard failed", it) }
-        runCatching { threats += RootDetectionGuard.assess(context) }
+        val startup = mutableListOf<String>()
+        runCatching { startup += RootDetectionGuard.assess(context) }
             .onFailure { Log.w(TAG, "RootDetectionGuard failed", it) }
-        runCatching { threats += EmulatorDetectionGuard.assess(context) }
+        runCatching { startup += EmulatorDetectionGuard.assess(context) }
             .onFailure { Log.w(TAG, "EmulatorDetectionGuard failed", it) }
+        runCatching { startup += AntiDebugGuard.assess(context) }
+            .onFailure { Log.w(TAG, "AntiDebugGuard failed", it) }
+        runCatching { startup += FridaXposedDetectionGuard.assess(context) }
+            .onFailure { Log.w(TAG, "FridaXposedDetectionGuard failed", it) }
 
+        handleStartup(context, startup)
+        startWatchdog(context)
+    }
+
+    private fun startWatchdog(context: Context) {
+        watchdogScope.launch {
+            while (true) {
+                delay(WATCHDOG_INTERVAL_MS)
+                val threats = mutableListOf<String>()
+                runCatching { threats += AntiDebugGuard.assess(context) }
+                    .onFailure { Log.w(TAG, "watchdog: AntiDebugGuard failed", it) }
+                runCatching { threats += FridaXposedDetectionGuard.assess(context) }
+                    .onFailure { Log.w(TAG, "watchdog: FridaXposedDetectionGuard failed", it) }
+                if (threats.isNotEmpty()) {
+                    enforceIfRelease("Hardening watchdog: ${threats.joinToString("; ")}")
+                }
+            }
+        }
+    }
+
+    private fun handleStartup(context: Context, threats: List<String>) {
         if (threats.isEmpty()) return
-
         val detail = threats.joinToString("; ")
         Log.w(TAG, "Hardening threats detected: $detail")
         if (LumenCrash.isInstalled()) {
             runCatching { CrashBreadcrumbs.record("hardening: $detail") }
         }
+        enforceIfRelease("Terminating process due to hardening detection: $detail")
+    }
 
-        if (BuildConfig.DEBUG) {
-            Log.w(TAG, "Debug build: logging hardening detections only.")
-            return
-        }
-
-        Log.e(TAG, "Terminating process due to hardening detection: $detail")
+    private fun enforceIfRelease(message: String) {
+        if (BuildConfig.DEBUG) return
+        Log.e(TAG, message)
         Process.killProcess(Process.myPid())
     }
 
     private const val TAG = "HardeningGate"
+    private const val WATCHDOG_INTERVAL_MS = 3000L
 }
