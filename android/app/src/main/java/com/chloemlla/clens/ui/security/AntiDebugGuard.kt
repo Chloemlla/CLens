@@ -39,7 +39,7 @@ object AntiDebugGuard {
 
             BufferedReader(FileReader(file)).use { reader ->
                 var pid: Int? = null
-                for (line in reader) {
+                for (line in reader.lineSequence()) {
                     if (line.startsWith("TracerPid:")) {
                         val trimmed = line.removePrefix("TracerPid:").trim()
                         pid = trimmed.toIntOrNull()

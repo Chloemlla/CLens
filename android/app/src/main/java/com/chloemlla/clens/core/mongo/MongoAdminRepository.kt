@@ -266,7 +266,7 @@ class MongoAdminRepository(
         val coll = collection(database, collection)
         val filter = Filters.`in`("_id", ids.mapNotNull { parseIdValue(it) })
         val update = parseDocument(updateDocument, "update")
-        if (update.isEmpty) {
+        if (update.isEmpty()) {
             throw MongoAdminException.Validation("update 不能为空。")
         }
         coll.updateMany(filter, update).modifiedCount
