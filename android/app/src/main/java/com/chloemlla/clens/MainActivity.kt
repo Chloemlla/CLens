@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,10 +39,10 @@ import com.chloemlla.clens.ui.security.ScreenCaptureJail
 import com.chloemlla.lumen.crash.CrashBreadcrumbs
 import com.chloemlla.lumen.crash.LumenCrash
 import com.chloemlla.lumen.crash.ui.LumenCrashReportScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
-    private lateinit var viewModel: ClensViewModel
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android 16 forces edge-to-edge and removes windowOptOutEdgeToEdgeEnforcement.
@@ -53,25 +55,33 @@ class MainActivity : FragmentActivity() {
 
         val app = application as ClensApplication
         val securityPrefs = SecurityPrefsStore(applicationContext)
-        var initialStartupReport = app.loadPendingCrashReport()
-        val initialViewModel = if (initialStartupReport == null) {
-            createViewModel(app, securityPrefs)?.also { viewModel = it }
-        } else {
-            null
-        }
-        if (initialStartupReport == null && initialViewModel == null) {
-            initialStartupReport = app.loadPendingCrashReport()
-        }
-        val startupError = if (initialStartupReport == null && initialViewModel == null) {
-            app.crashSdkStatusMessage()
-                ?: "CLens failed to start. No crash report was available."
-        } else {
-            null
-        }
+        val pendingReport = app.loadPendingCrashReport()
 
         setContent {
-            var startupReport by remember { mutableStateOf(initialStartupReport) }
-            var bootstrapError by remember { mutableStateOf(startupError) }
+            var startupReport by remember { mutableStateOf(pendingReport) }
+            var bootstrapError by remember { mutableStateOf<String?>(null) }
+            var viewModel by remember { mutableStateOf<ClensViewModel?>(null) }
+            var building by remember { mutableStateOf(pendingReport == null) }
+            var buildAttempt by remember { mutableStateOf(0) }
+
+            // Build the data layer + ViewModel off the main thread. Cold-start
+            // initialization (EncryptedSharedPreferences/Tink, Room + file stores,
+            // Mongo driver class loading) can stall the main Looper for seconds on
+            // slow or security-tooled devices; rendering a lightweight loading UI
+            // first keeps the main thread responsive.
+            if (building) {
+                LaunchedEffect(buildAttempt) {
+                    val vm = withContext(Dispatchers.Default) { createViewModel(app, securityPrefs) }
+                    if (vm != null) {
+                        viewModel = vm
+                    } else {
+                        bootstrapError = app.crashSdkStatusMessage()
+                            ?: "CLens failed to start. No crash report was available."
+                    }
+                    building = false
+                }
+            }
+
             val themeMode = remember { mutableStateOf(securityPrefs.getThemeMode()) }
             ClensTheme(themeMode = themeMode.value) {
                 BiometricLockGate(securityPrefs = securityPrefs) {
@@ -83,17 +93,18 @@ class MainActivity : FragmentActivity() {
                                 onContinue = {
                                     app.clearStartupCrashReport()
                                     startupReport = null
-                                    if (initialViewModel == null) {
-                                        recreate()
-                                    }
+                                    if (viewModel == null && !building) building = true
                                 },
                             )
                         }
-                        initialViewModel != null -> {
+                        viewModel != null -> {
                             ClensApp(
-                                viewModel = initialViewModel,
+                                viewModel = viewModel!!,
                                 onThemeModeChanged = { mode -> themeMode.value = mode },
                             )
+                        }
+                        building -> {
+                            StartupLoading()
                         }
                         else -> {
                             Column(
@@ -115,7 +126,8 @@ class MainActivity : FragmentActivity() {
                                 Button(
                                     onClick = {
                                         bootstrapError = null
-                                        recreate()
+                                        building = true
+                                        buildAttempt += 1
                                     },
                                 ) {
                                     Text("Retry")
@@ -160,6 +172,24 @@ class MainActivity : FragmentActivity() {
 
     private companion object {
         const val TAG = "MainActivity"
+    }
+}
+
+@Composable
+private fun StartupLoading() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator()
+        Text(
+            text = "正在启动…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
