@@ -16,6 +16,11 @@ object EmulatorDetectionGuard {
                 checkPipes()
                 checkQemuKernelProp()
                 checkHost()
+                checkExtraProps()
+                checkCpuInfo()
+                checkQemuSockets()
+                checkEmulatorFiles()
+                checkKnownEmulatorModels()
             }.toList()
         }.getOrDefault(emptyList())
     }
@@ -78,10 +83,7 @@ object EmulatorDetectionGuard {
 
     private fun MutableList<String>.checkQemuKernelProp() {
         runCatching {
-            val clazz = Class.forName("android.os.SystemProperties")
-            val method = clazz.getMethod("get", String::class.java)
-            val value = method.invoke(null, "ro.kernel.qemu") as? String ?: return@runCatching
-            if (value == "1") {
+            if (systemProperty("ro.kernel.qemu") == "1") {
                 add("qemu-kernel")
             }
         }
@@ -94,5 +96,75 @@ object EmulatorDetectionGuard {
                 add("emulator-host")
             }
         }
+    }
+
+    private fun MutableList<String>.checkExtraProps() {
+        val props = mapOf(
+            "ro.boot.qemu" to "1",
+            "qemu.hw.mainkeys" to "1",
+            "sys.qemu.mainkeys" to "1",
+            "init.svc.qemud" to "running",
+            "init.svc.qemu-props" to "running",
+        )
+        for ((key, value) in props) {
+            runCatching {
+                if (systemProperty(key) == value) {
+                    add("emulator-prop:$key")
+                }
+            }
+        }
+    }
+
+    private fun MutableList<String>.checkCpuInfo() {
+        runCatching {
+            val cpu = File("/proc/cpuinfo")
+            if (cpu.canRead()) {
+                val text = cpu.readText()
+                val markers = listOf("QEMU", "goldfish", "ranchu", "vbox", "hypervisor", "VMware")
+                if (markers.any { text.contains(it, ignoreCase = true) }) {
+                    add("emulator-cpuinfo")
+                }
+            }
+        }
+    }
+
+    private fun MutableList<String>.checkQemuSockets() {
+        runCatching {
+            if (File("/dev/socket/qemud").exists() || File("/dev/socket/qemu_pipe").exists()) {
+                add("qemu-socket")
+            }
+        }
+    }
+
+    private fun MutableList<String>.checkEmulatorFiles() {
+        runCatching {
+            val files = listOf(
+                "/system/bin/qemu-props",
+                "/system/lib/libc_malloc_debug_qemu.so",
+                "/system/lib64/libc_malloc_debug_qemu.so",
+                "/system/app/QemuTrace",
+            )
+            if (files.any { File(it).exists() }) {
+                add("emulator-files")
+            }
+        }
+    }
+
+    private fun MutableList<String>.checkKnownEmulatorModels() {
+        runCatching {
+            val model = Build.MODEL ?: return@runCatching
+            val emulators = listOf("Genymotion", "vbox86p", "Nox", "MuMu", "LDPlayer", "BlueStacks", "Droid4X")
+            if (emulators.any { model.contains(it, ignoreCase = true) }) {
+                add("emulator-model")
+            }
+        }
+    }
+
+    private fun systemProperty(key: String): String? {
+        return runCatching {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val method = clazz.getMethod("get", String::class.java)
+            method.invoke(null, key) as? String
+        }.getOrNull()
     }
 }

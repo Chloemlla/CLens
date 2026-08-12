@@ -37,12 +37,56 @@ object RootDetectionGuard {
         }
 
         runCatching {
+            for (path in MAGISK_PATHS) {
+                if (File(path).exists()) {
+                    findings.add("magisk:$path")
+                }
+            }
+        }
+
+        runCatching {
+            for (path in KERNEL_SU_PATHS) {
+                if (File(path).exists()) {
+                    findings.add("kernelsu:$path")
+                }
+            }
+        }
+
+        runCatching {
+            for (path in APATCH_PATHS) {
+                if (File(path).exists()) {
+                    findings.add("apatch:$path")
+                }
+            }
+        }
+
+        runCatching {
+            for (path in ZYGISK_PATHS) {
+                if (File(path).exists()) {
+                    findings.add("zygisk:$path")
+                }
+            }
+        }
+
+        runCatching {
+            File("/proc/self/mountinfo").useLines { lines ->
+                for (line in lines) {
+                    val marker = MOUNT_MARKERS.firstOrNull { line.contains(it) }
+                    if (marker != null) {
+                        findings.add("suspicious-mount:$marker")
+                        break
+                    }
+                }
+            }
+        }
+
+        runCatching {
             File("/proc/mounts").useLines { lines ->
                 for (line in lines) {
-                    if ((line.startsWith("/dev/block/") || line.contains(" /system ") || line.contains(" /vendor ")) &&
+                    if ((line.startsWith("/dev/block/") || line.contains(" /system ") ||
+                            line.contains(" /vendor ") || line.contains(" /product ")) &&
                         line.contains(" rw ")
                     ) {
-                        // Mounted writable often indicates root was granted via remount.
                         findings.add("system-rw-mount")
                         break
                     }
@@ -51,11 +95,21 @@ object RootDetectionGuard {
         }
 
         runCatching {
-            if (File("/data/adb/magisk").exists() ||
-                File("/data/adb/magisk.img").exists() ||
-                File("/data/adb/magisk.db").exists()
-            ) {
-                findings.add("magisk-v2")
+            val enforce = File("/sys/fs/selinux/enforce")
+            if (enforce.canRead() && enforce.readText().trim() == "0") {
+                findings.add("selinux-permissive")
+            }
+        }
+
+        runCatching {
+            if (systemProperty("ro.secure") == "0") {
+                findings.add("ro.secure=0")
+            }
+        }
+
+        runCatching {
+            if (systemProperty("ro.debuggable") == "1") {
+                findings.add("ro.debuggable=1")
             }
         }
 
@@ -75,11 +129,24 @@ object RootDetectionGuard {
         }
 
         runCatching {
-            context.packageManager.getPackageInfo("com.topjohnwu.magisk", 0)
-            findings.add("magisk-package")
+            for (pkg in ROOT_MANAGER_PACKAGES) {
+                try {
+                    context.packageManager.getPackageInfo(pkg, 0)
+                    findings.add("root-manager:$pkg")
+                } catch (_: PackageManager.NameNotFoundException) {
+                }
+            }
         }
 
         return findings
+    }
+
+    private fun systemProperty(key: String): String? {
+        return runCatching {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val method = clazz.getMethod("get", String::class.java)
+            method.invoke(null, key) as? String
+        }.getOrNull()
     }
 
     private val SU_PATHS = listOf(
@@ -93,5 +160,46 @@ object RootDetectionGuard {
         "/system/sbin/su",
         "/data/local/bin/su",
         "/data/local/xbin/su",
+        "/system/bin/daemonsu",
+        "/system/xbin/daemonsu",
+        "/data/local/su",
+        "/system/sd/xbin/su",
+    )
+
+    private val MAGISK_PATHS = listOf(
+        "/data/adb/magisk",
+        "/data/adb/magisk.img",
+        "/data/adb/magisk.db",
+        "/dev/magisk",
+    )
+
+    private val KERNEL_SU_PATHS = listOf(
+        "/data/adb/ksu",
+        "/data/adb/ksu.img",
+        "/dev/kernelsu",
+    )
+
+    private val APATCH_PATHS = listOf(
+        "/data/adb/ap",
+        "/data/adb/apatch",
+        "/data/adb/ap.img",
+    )
+
+    private val ZYGISK_PATHS = listOf(
+        "/data/adb/zygisk",
+        "/data/adb/modules/zygisk",
+    )
+
+    private val MOUNT_MARKERS = listOf("magisk", "zygisk", "kernelsu", "apatch", "riru")
+
+    private val ROOT_MANAGER_PACKAGES = listOf(
+        "com.topjohnwu.magisk",
+        "com.github.kr328.magisk",
+        "com.kernel.su",
+        "me.weishu.kernelsu",
+        "com.alpha.apatch",
+        "com.koushikdutta.superuser",
+        "eu.chainfire.supersu",
+        "com.thirdparty.superuser",
     )
 }
