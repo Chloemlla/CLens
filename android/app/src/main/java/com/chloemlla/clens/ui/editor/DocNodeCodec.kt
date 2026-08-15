@@ -325,7 +325,7 @@ object DocNodeCodec {
     private fun defaultScalarFor(type: DocValueType, current: DocNode): String? {
         return when (type) {
             DocValueType.Null -> null
-            DocValueType.Boolean -> if (current.scalar.equals("true", true)) "true" else "false"
+            DocValueType.Boolean -> if (current.scalar?.equals("true", true) == true) "true" else "false"
             DocValueType.Int32 -> current.scalar?.toIntOrNull()?.toString() ?: "0"
             DocValueType.Int64 -> current.scalar?.toLongOrNull()?.toString() ?: "0"
             DocValueType.Double -> current.scalar?.toDoubleOrNull()?.toString() ?: "0.0"

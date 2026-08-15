@@ -83,7 +83,7 @@ object RootDetectionGuard {
         runCatching {
             File("/proc/mounts").useLines { lines ->
                 for (line in lines) {
-                    if ((line.startsWith("/dev/block/") || line.contains(" /system ") ||
+                    if ((line.contains(" /system ") ||
                             line.contains(" /vendor ") || line.contains(" /product ")) &&
                         line.contains(" rw ")
                     ) {

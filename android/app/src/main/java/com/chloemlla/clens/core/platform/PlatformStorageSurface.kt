@@ -54,6 +54,5 @@ object PlatformStorageSurface {
     fun isAppPrivateFilesPath(absolutePath: String): Boolean {
         val normalized = absolutePath.replace('\\', '/').lowercase()
         return normalized.contains("/files/") && !normalized.contains("/android/data/")
-            || normalized.contains("/files/")
     }
 }

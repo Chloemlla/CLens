@@ -126,7 +126,7 @@ object DocumentImportCodecs {
             trimmed.startsWith("{") -> runCatching { JSONObject(trimmed) }.getOrDefault(trimmed)
             trimmed.startsWith("[") -> runCatching { JSONArray(trimmed) }.getOrDefault(trimmed)
             trimmed.toLongOrNull() != null -> trimmed.toLong()
-            trimmed.toDoubleOrNull() != null -> trimmed.toDouble()
+            trimmed.toDoubleOrNull()?.takeIf { it.isFinite() } != null -> trimmed.toDouble()
             else -> trimmed
         }
     }
@@ -157,7 +157,7 @@ object DocumentImportCodecs {
                     if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
                     row.add(field.toString())
                     field.setLength(0)
-                    if (row.any { it.isNotEmpty() } || records.isNotEmpty()) {
+                    if (!(row.size == 1 && row[0].isEmpty())) {
                         records.add(row)
                     }
                     row = ArrayList()

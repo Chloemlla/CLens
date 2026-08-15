@@ -24,6 +24,7 @@ class MongoConnectionStore(
             error,
         )
     }
+    private val lock = Any()
 
     fun listProfiles(): List<MongoConnectionProfile> {
         val raw = prefs.getString(KEY_PROFILES, "[]").orEmpty()
@@ -38,33 +39,37 @@ class MongoConnectionStore(
     }
 
     fun upsert(profile: MongoConnectionProfile) {
-        val now = System.currentTimeMillis()
-        val existing = listProfiles().toMutableList()
-        val index = existing.indexOfFirst { it.id == profile.id }
-        val normalized = profile.copy(
-            name = profile.name.trim().ifBlank { "未命名连接" },
-            updatedAtMillis = now,
-            createdAtMillis = if (index >= 0) existing[index].createdAtMillis else profile.createdAtMillis,
-        )
-        if (index >= 0) {
-            existing[index] = normalized
-        } else {
-            existing.add(0, normalized)
+        synchronized(lock) {
+            val now = System.currentTimeMillis()
+            val existing = listProfiles().toMutableList()
+            val index = existing.indexOfFirst { it.id == profile.id }
+            val normalized = profile.copy(
+                name = profile.name.trim().ifBlank { "未命名连接" },
+                updatedAtMillis = now,
+                createdAtMillis = if (index >= 0) existing[index].createdAtMillis else profile.createdAtMillis,
+            )
+            if (index >= 0) {
+                existing[index] = normalized
+            } else {
+                existing.add(0, normalized)
+            }
+            writeProfiles(existing)
+            if (getActiveProfileId().isNullOrBlank()) {
+                setActiveProfileId(normalized.id)
+            }
+            CrashBreadcrumbs.record("Connection upsert: " + normalized.name)
         }
-        writeProfiles(existing)
-        if (getActiveProfileId().isNullOrBlank()) {
-            setActiveProfileId(normalized.id)
-        }
-        CrashBreadcrumbs.record("Connection upsert: " + normalized.name)
     }
 
     fun delete(profileId: String) {
-        val remaining = listProfiles().filterNot { it.id == profileId }
-        writeProfiles(remaining)
-        if (getActiveProfileId() == profileId) {
-            setActiveProfileId(remaining.firstOrNull()?.id)
+        synchronized(lock) {
+            val remaining = listProfiles().filterNot { it.id == profileId }
+            writeProfiles(remaining)
+            if (getActiveProfileId() == profileId) {
+                setActiveProfileId(remaining.firstOrNull()?.id)
+            }
+            CrashBreadcrumbs.record("Connection deleted")
         }
-        CrashBreadcrumbs.record("Connection deleted")
     }
 
     fun setActiveProfileId(profileId: String?) {

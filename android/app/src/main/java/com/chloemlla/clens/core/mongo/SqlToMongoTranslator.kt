@@ -52,11 +52,13 @@ object SqlToMongoTranslator {
         var where: String? = null
 
         Regex("""(?i)\sOFFSET\s+(\d+)\s*$""").find(rest)?.let { match ->
-            skip = match.groupValues[1].toInt()
+            skip = match.groupValues[1].toIntOrNull()
+                ?: throw SqlTranslateException("OFFSET 数值超出范围：${match.groupValues[1]}")
             rest = rest.substring(0, match.range.first).trimEnd()
         }
         Regex("""(?i)\sLIMIT\s+(\d+)\s*$""").find(rest)?.let { match ->
-            limit = match.groupValues[1].toInt()
+            limit = match.groupValues[1].toIntOrNull()
+                ?: throw SqlTranslateException("LIMIT 数值超出范围：${match.groupValues[1]}")
             rest = rest.substring(0, match.range.first).trimEnd()
         }
         Regex("""(?i)\sORDER\s+BY\s+(.+)$""").find(rest)?.let { match ->
@@ -400,6 +402,9 @@ object SqlToMongoTranslator {
             val inner = text.substring(1, text.length - 1).trim()
             if (inner.isEmpty()) {
                 throw SqlTranslateException("$label 不能为空。")
+            }
+            if (inner.split('.').any { it.startsWith('$') }) {
+                throw SqlTranslateException("无效的$label：不允许以 $ 开头的路径段。")
             }
             if (inner.contains('.')) {
                 // dotted paths allowed for fields; collection names should be simple

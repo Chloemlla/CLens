@@ -432,8 +432,8 @@ class ConnectionController(
     fun measureConnectionLatency(profileId: String) {
         if (state.value.connectedProfileId != profileId) return
         ctx.setMeasuringLatency(profileId, true)
-        try {
-            ctx.actions.run("测量延迟") {
+        ctx.actions.run("测量延迟") {
+            try {
                 val result = sessionManager.healthPing()
                 if (result.ok) {
                     ctx.storeLatencyMs(profileId, result.latencyMillis)
@@ -441,10 +441,9 @@ class ConnectionController(
                 } else {
                     state.update { it.copy(error = "延迟测量失败") }
                 }
+            } finally {
+                ctx.setMeasuringLatency(profileId, false)
             }
-        } catch (e: Throwable) {
-            ctx.setMeasuringLatency(profileId, false)
-            throw e
         }
     }
 }
@@ -580,8 +579,8 @@ class SessionHealthController(
     fun refreshHealthMeasurement() {
         val connId = state.value.connectedProfileId ?: return
         ctx.setMeasuringLatency(connId, true)
-        try {
-            ctx.actions.run("测量延迟") {
+        ctx.actions.run("测量延迟") {
+            try {
                 val result = sessionManager.healthPing()
                 if (result.ok) {
                     recordLatencyAndScore(result.latencyMillis)
@@ -589,16 +588,16 @@ class SessionHealthController(
                 } else {
                     recordOpResult(success = false)
                 }
+            } finally {
+                ctx.setMeasuringLatency(connId, false)
             }
-        } catch (e: Throwable) {
-            ctx.setMeasuringLatency(connId, false)
-            throw e
         }
     }
 
     private fun persistHealthData() {
-        val connId = state.value.connectedProfileId ?: return
-        ctx.localStore.saveConnectionHealthData(monitor.getHealthData())
+        val data = monitor.getHealthData()
+        if (data.connectionId.isBlank()) return
+        ctx.localStore.saveConnectionHealthData(data)
     }
 
     /**

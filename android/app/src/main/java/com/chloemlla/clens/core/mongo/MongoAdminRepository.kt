@@ -534,22 +534,30 @@ class MongoAdminRepository(
             ),
         )
         files.insertOne(fileDoc)
-        var n = 0
-        var offset = 0
-        while (offset < bytes.size) {
-            val end = minOf(offset + chunkSize, bytes.size)
-            val slice = bytes.copyOfRange(offset, end)
-            chunks.insertOne(
-                Document(
-                    mapOf(
-                        "files_id" to id,
-                        "n" to n,
-                        "data" to Binary(slice),
+        try {
+            var n = 0
+            var offset = 0
+            while (offset < bytes.size) {
+                val end = minOf(offset + chunkSize, bytes.size)
+                val slice = bytes.copyOfRange(offset, end)
+                chunks.insertOne(
+                    Document(
+                        mapOf(
+                            "files_id" to id,
+                            "n" to n,
+                            "data" to Binary(slice),
+                        ),
                     ),
-                ),
-            )
-            n += 1
-            offset = end
+                )
+                n += 1
+                offset = end
+            }
+        } catch (error: Throwable) {
+            // Roll back the partial upload so a failed write leaves no orphaned
+            // files/chunks record that would later read back as truncated data.
+            runCatching { files.deleteOne(Filters.eq("_id", id)) }
+            runCatching { chunks.deleteMany(Filters.eq("files_id", id)) }
+            throw error
         }
         id.toString()
     }

@@ -29,6 +29,7 @@ data class OfflineSnapshotMeta(
 class OfflineSnapshotStore(context: Context) {
     private val rootDir = File(context.applicationContext.filesDir, DIR_NAME).apply { mkdirs() }
     private val indexFile = File(rootDir, INDEX_FILE)
+    private val lock = Any()
 
     fun save(
         name: String? = null,
@@ -41,25 +42,27 @@ class OfflineSnapshotStore(context: Context) {
         createdAtMillis: Long = System.currentTimeMillis(),
         snapshotId: String = UUID.randomUUID().toString(),
     ): OfflineSnapshotMeta {
-        val cappedLimit = clampLimit(limit)
-        val cappedDocs = validateAndCapDocuments(documents)
-        val toStore = if (cappedDocs.size > cappedLimit) cappedDocs.take(cappedLimit) else cappedDocs
-        val meta = OfflineSnapshotMeta(
-            snapshotId = snapshotId,
-            name = name?.trim()?.takeIf { it.isNotEmpty() } ?: defaultName(database, collection, createdAtMillis),
-            connectionId = connectionId,
-            database = database,
-            collection = collection,
-            filterJson = filterJson.ifBlank { "{}" },
-            limit = cappedLimit,
-            createdAtMillis = createdAtMillis,
-            documentCount = toStore.size,
-        )
-        File(rootDir, documentFileName(snapshotId)).writeText(toStore.joinToString("\n"), Charsets.UTF_8)
-        val all = listAll().filterNot { it.snapshotId == snapshotId }.toMutableList()
-        all.add(0, meta)
-        writeIndex(all)
-        return meta
+        synchronized(lock) {
+            val cappedLimit = clampLimit(limit)
+            val cappedDocs = validateAndCapDocuments(documents)
+            val toStore = if (cappedDocs.size > cappedLimit) cappedDocs.take(cappedLimit) else cappedDocs
+            val meta = OfflineSnapshotMeta(
+                snapshotId = snapshotId,
+                name = name?.trim()?.takeIf { it.isNotEmpty() } ?: defaultName(database, collection, createdAtMillis),
+                connectionId = connectionId,
+                database = database,
+                collection = collection,
+                filterJson = filterJson.ifBlank { "{}" },
+                limit = cappedLimit,
+                createdAtMillis = createdAtMillis,
+                documentCount = toStore.size,
+            )
+            File(rootDir, documentFileName(snapshotId)).writeText(toStore.joinToString("\n"), Charsets.UTF_8)
+            val all = listAll().filterNot { it.snapshotId == snapshotId }.toMutableList()
+            all.add(0, meta)
+            writeIndex(all)
+            return meta
+        }
     }
 
     fun list(
@@ -85,24 +88,28 @@ class OfflineSnapshotStore(context: Context) {
     }
 
     fun delete(snapshotId: String) {
-        File(rootDir, documentFileName(snapshotId)).delete()
-        writeIndex(listAll().filterNot { it.snapshotId == snapshotId })
+        synchronized(lock) {
+            File(rootDir, documentFileName(snapshotId)).delete()
+            writeIndex(listAll().filterNot { it.snapshotId == snapshotId })
+        }
     }
 
     fun rename(snapshotId: String, newName: String): OfflineSnapshotMeta {
-        val name = newName.trim()
-        if (name.isEmpty()) throw IllegalArgumentException("快照名称不能为空")
-        var updated: OfflineSnapshotMeta? = null
-        val next = listAll().map {
-            if (it.snapshotId == snapshotId) {
-                it.copy(name = name).also { meta -> updated = meta }
-            } else {
-                it
+        synchronized(lock) {
+            val name = newName.trim()
+            if (name.isEmpty()) throw IllegalArgumentException("快照名称不能为空")
+            var updated: OfflineSnapshotMeta? = null
+            val next = listAll().map {
+                if (it.snapshotId == snapshotId) {
+                    it.copy(name = name).also { meta -> updated = meta }
+                } else {
+                    it
+                }
             }
+            if (updated == null) throw IllegalArgumentException("快照不存在")
+            writeIndex(next)
+            return updated!!
         }
-        if (updated == null) throw IllegalArgumentException("快照不存在")
-        writeIndex(next)
-        return updated!!
     }
 
     private fun listAll(): List<OfflineSnapshotMeta> {
@@ -146,7 +153,13 @@ class OfflineSnapshotStore(context: Context) {
                     .put("documentCount", meta.documentCount),
             )
         }
-        indexFile.writeText(array.toString(), Charsets.UTF_8)
+        rootDir.mkdirs()
+        val tmp = File(rootDir, "$INDEX_FILE.tmp")
+        tmp.writeText(array.toString(), Charsets.UTF_8)
+        if (!tmp.renameTo(indexFile)) {
+            indexFile.writeText(array.toString(), Charsets.UTF_8)
+            tmp.delete()
+        }
     }
 
     companion object {

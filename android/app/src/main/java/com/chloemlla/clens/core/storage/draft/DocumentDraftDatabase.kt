@@ -23,7 +23,9 @@ abstract class DocumentDraftDatabase : RoomDatabase() {
                     context.applicationContext,
                     DocumentDraftDatabase::class.java,
                     "clens_document_drafts.db",
-                ).fallbackToDestructiveMigration()
+                )
+                    // No destructive fallback: a future schema bump must ship an
+                    // explicit migration instead of silently wiping user drafts.
                     // Existing controller APIs are synchronous; drafts are small and local-only.
                     .allowMainThreadQueries()
                     .build()

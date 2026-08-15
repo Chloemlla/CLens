@@ -114,11 +114,12 @@ object PpkKeyConverter {
     }
 
     private fun decryptPrivateBlob(blob: ByteArray, passphrase: CharArray): ByteArray {
-        // PuTTY KDF: SHA1(uint32_be(counter) || passphrase) repeated to 40 bytes; use first 32 as AES key, next 16 as IV? 
-        // Actually: key = first 32 bytes of concatenated hashes; IV is 16 zero bytes for aes256-cbc in PPK2.
+        // PuTTY KDF: SHA1(uint32_be(counter) || passphrase) repeated to 48 bytes.
+        // Key = first 32 bytes of the concatenated key material; IV = next 16 bytes
+        // (bytes 32..47) for aes256-cbc in PPK2.
         val passBytes = String(passphrase).toByteArray(Charsets.UTF_8)
         val md = MessageDigest.getInstance("SHA-1")
-        val keyMaterial = ByteArray(40)
+        val keyMaterial = ByteArray(48)
         var offset = 0
         var counter = 0
         while (offset < keyMaterial.size) {
@@ -134,7 +135,7 @@ object PpkKeyConverter {
             counter++
         }
         val key = keyMaterial.copyOfRange(0, 32)
-        val iv = ByteArray(16) // zeros
+        val iv = keyMaterial.copyOfRange(32, 48)
         val cipher = Cipher.getInstance("AES/CBC/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
         if (blob.size % 16 != 0) {

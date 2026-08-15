@@ -72,7 +72,7 @@ class MainActivity : FragmentActivity() {
             // first keeps the main thread responsive.
             if (building) {
                 LaunchedEffect(buildAttempt) {
-                    val vm = withContext(Dispatchers.Default) { createViewModel(app, securityPrefs) }
+                    val vm = createViewModel(app, securityPrefs)
                     if (vm != null) {
                         viewModel = vm
                     } else {
@@ -141,23 +141,31 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun createViewModel(
+    private suspend fun createViewModel(
         app: ClensApplication,
         securityPrefs: SecurityPrefsStore,
     ): ClensViewModel? {
         return try {
-            val store = MongoConnectionStore(applicationContext)
-            val localStore = LocalAppStore(applicationContext)
-            val draftStore = DocumentDraftStore(applicationContext)
-            val opsArchiveStore = OpsCounterArchiveStore(applicationContext)
-            val snapshotStore = OfflineSnapshotStore(applicationContext)
-            val stagingStore = StagingQueueStore(applicationContext)
             val sessionManager = MongoSessionManager()
             val repository = MongoAdminRepository(sessionManager)
-            ViewModelProvider(
-                this,
-                ClensViewModel.Factory(applicationContext, store, localStore, draftStore, opsArchiveStore, snapshotStore, stagingStore, securityPrefs, sessionManager, repository),
-            )[ClensViewModel::class.java]
+            val factory = withContext(Dispatchers.Default) {
+                ClensViewModel.Factory(
+                    applicationContext,
+                    MongoConnectionStore(applicationContext),
+                    LocalAppStore(applicationContext),
+                    DocumentDraftStore(applicationContext),
+                    OpsCounterArchiveStore(applicationContext),
+                    OfflineSnapshotStore(applicationContext),
+                    StagingQueueStore(applicationContext),
+                    securityPrefs,
+                    sessionManager,
+                    repository,
+                )
+            }
+            // ViewModelProvider registers into the Activity's ViewModelStore,
+            // which is cleared from the main thread on destroy — create it here on
+            // Main rather than inside the withContext block.
+            ViewModelProvider(this, factory)[ClensViewModel::class.java]
         } catch (throwable: Throwable) {
             Log.e(TAG, "Failed to create ClensViewModel", throwable)
             app.recordStartupCrash(throwable)

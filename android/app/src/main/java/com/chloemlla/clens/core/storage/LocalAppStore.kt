@@ -13,6 +13,7 @@ import org.json.JSONObject
 
 class LocalAppStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val lock = Any()
 
     /**
      * Build the storage key for per-collection sort preference.
@@ -62,10 +63,12 @@ class LocalAppStore(context: Context) {
     }
 
     fun addQueryHistory(entry: QueryHistoryEntry) {
-        val next = (listOf(entry) + listQueryHistory())
-            .distinctBy { it.modeAggregate to it.database to it.collection to it.filterJson to it.pipelineJson }
-            .take(MAX_HISTORY)
-        writeHistory(next)
+        synchronized(lock) {
+            val next = (listOf(entry) + listQueryHistory())
+                .distinctBy { it.modeAggregate to it.database to it.collection to it.filterJson to it.pipelineJson }
+                .take(MAX_HISTORY)
+            writeHistory(next)
+        }
     }
 
     fun listQueryFavorites(): List<QueryFavoriteEntry> {
@@ -74,19 +77,23 @@ class LocalAppStore(context: Context) {
     }
 
     fun saveQueryFavorite(entry: QueryFavoriteEntry) {
-        val name = entry.name.trim()
-        require(name.isNotBlank()) { "收藏名称不能为空" }
-        val normalized = entry.copy(name = name)
-        val existing = listQueryFavorites()
-        val withoutSameId = existing.filterNot { it.id == normalized.id }
-        val next = (listOf(normalized) + withoutSameId)
-            .distinctBy { it.name.lowercase() to it.database to it.collection to it.filterJson to it.sortJson to it.projectionJson to it.modeAggregate to it.pipelineJson }
-            .take(MAX_FAVORITES)
-        writeFavorites(next)
+        synchronized(lock) {
+            val name = entry.name.trim()
+            require(name.isNotBlank()) { "收藏名称不能为空" }
+            val normalized = entry.copy(name = name)
+            val existing = listQueryFavorites()
+            val withoutSameId = existing.filterNot { it.id == normalized.id }
+            val next = (listOf(normalized) + withoutSameId)
+                .distinctBy { it.name.lowercase() to it.database to it.collection to it.filterJson to it.sortJson to it.projectionJson to it.modeAggregate to it.pipelineJson }
+                .take(MAX_FAVORITES)
+            writeFavorites(next)
+        }
     }
 
     fun deleteQueryFavorite(id: String) {
-        writeFavorites(listQueryFavorites().filterNot { it.id == id })
+        synchronized(lock) {
+            writeFavorites(listQueryFavorites().filterNot { it.id == id })
+        }
     }
 
     fun listAuditLog(): List<AuditLogEntry> {
@@ -95,14 +102,16 @@ class LocalAppStore(context: Context) {
     }
 
     fun addAudit(action: String, target: String, detail: String = "") {
-        val entry = AuditLogEntry(
-            id = UUID.randomUUID().toString(),
-            action = action,
-            target = target,
-            detail = detail,
-        )
-        val next = (listOf(entry) + listAuditLog()).take(MAX_AUDIT)
-        writeAudit(next)
+        synchronized(lock) {
+            val entry = AuditLogEntry(
+                id = UUID.randomUUID().toString(),
+                action = action,
+                target = target,
+                detail = detail,
+            )
+            val next = (listOf(entry) + listAuditLog()).take(MAX_AUDIT)
+            writeAudit(next)
+        }
     }
 
     fun clearAuditLog() {
@@ -115,15 +124,19 @@ class LocalAppStore(context: Context) {
     }
 
     fun saveAggregateTemplate(entry: AggregateTemplateEntry) {
-        val normalized = entry.copy(updatedAtMillis = System.currentTimeMillis())
-        val existing = listAggregateTemplates()
-        val withoutSameId = existing.filterNot { it.id == normalized.id }
-        val next = (listOf(normalized) + withoutSameId).take(MAX_AGGREGATE_TEMPLATES)
-        writeAggregateTemplates(next)
+        synchronized(lock) {
+            val normalized = entry.copy(updatedAtMillis = System.currentTimeMillis())
+            val existing = listAggregateTemplates()
+            val withoutSameId = existing.filterNot { it.id == normalized.id }
+            val next = (listOf(normalized) + withoutSameId).take(MAX_AGGREGATE_TEMPLATES)
+            writeAggregateTemplates(next)
+        }
     }
 
     fun deleteAggregateTemplate(id: String) {
-        writeAggregateTemplates(listAggregateTemplates().filterNot { it.id == id })
+        synchronized(lock) {
+            writeAggregateTemplates(listAggregateTemplates().filterNot { it.id == id })
+        }
     }
 
     fun updateAggregateTemplate(entry: AggregateTemplateEntry) {
