@@ -1,6 +1,7 @@
 package com.chloemlla.clens.ui
 
 import com.chloemlla.clens.core.mongo.OpsCounterSampler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,12 +49,12 @@ class AdminController(
     }
 
     fun createIndex() {
-        ctx.ensureWritable("创建索引")
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持创建索引。") }
             return
         }
         ctx.actions.run("创建索引") {
+            ctx.ensureWritable("创建索引")
             val current = state.value
             val expire = current.indexExpireAfterSeconds.trim()
                 .takeIf { it.isNotBlank() }
@@ -73,7 +74,10 @@ class AdminController(
     }
 
     fun requestDropIndex(name: String) {
-        ctx.ensureWritable("删除索引")
+        if (state.value.connectedReadOnly) {
+            state.update { it.copy(error = "当前连接为只读模式，已阻止：删除索引") }
+            return
+        }
         if (state.value.isSelectedView) {
             state.update { it.copy(error = "视图不支持删除索引。") }
             return
@@ -94,9 +98,11 @@ class AdminController(
     }
 
     fun dropIndexConfirmed() {
+        val name = state.value.pendingDestructive?.target.orEmpty()
+        if (name.isBlank()) return
         ctx.actions.run("删除索引") {
+            ctx.ensureWritable("删除索引")
             val current = state.value
-            val name = current.pendingDestructive?.target.orEmpty()
             repository.dropIndex(current.selectedDatabase, current.selectedCollection, name)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
             loadIndexes()
@@ -110,17 +116,18 @@ class AdminController(
             val usersResult = runCatching {
                 repository.listUsers(state.value.activeProfile?.authDatabase ?: "admin")
             }
-            val opsResult = runCatching { repository.currentOps() }
             state.update {
                 it.copy(
                     serverOverview = overview,
                     users = usersResult.getOrDefault(emptyList()),
                     usersError = usersResult.exceptionOrNull()?.message,
-                    currentOpsJson = opsResult.getOrDefault(""),
-                    currentOpsError = opsResult.exceptionOrNull()?.message,
                     status = "服务器信息已更新",
                 )
             }
+            // Keep the structured and raw currentOp state in sync. The old code only
+            // updated currentOpsJson/currentOpsError here, leaving a prior
+            // currentOpsListError visible after a later successful refresh.
+            loadCurrentOps()
         }
     }
 
@@ -164,12 +171,33 @@ class AdminController(
 
     fun clearOpsHistory() {
         val connectionId = state.value.connectedProfileId ?: return
-        runCatching { ctx.opsArchiveStore.clear(connectionId) }
         state.update {
             it.copy(
-                opsCounterHistoryState = null,
-                status = "已清空当前连接 Ops 历史",
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.ClearOpsHistory,
+                    target = connectionId,
+                    message = "将永久清空当前连接的全部 Ops 监控历史。此操作不可恢复，请长按 3 秒确认。",
+                    confirmToken = connectionId,
+                    confirmMode = DestructiveConfirmMode.LongPress,
+                ),
+                destructiveConfirmInput = "",
             )
+        }
+    }
+
+    fun clearOpsHistoryConfirmed() {
+        val connectionId = state.value.pendingDestructive?.target.orEmpty()
+        if (connectionId.isBlank()) return
+        ctx.actions.run("清空 Ops 历史") {
+            ctx.opsArchiveStore.clear(connectionId)
+            state.update {
+                it.copy(
+                    pendingDestructive = null,
+                    destructiveConfirmInput = "",
+                    opsCounterHistoryState = null,
+                    status = "已清空当前连接 Ops 历史",
+                )
+            }
         }
     }
 
@@ -211,7 +239,16 @@ class AdminController(
         state.update { it.copy(opsCounterSampling = true, opsCounterError = null) }
         samplingJob = scope.launch {
             while (isActive && samplingVisible && state.value.isConnected) {
-                val snapshotResult = runCatching { repository.fetchOpCounters() }
+                // runCatching catches CancellationException. Re-throw it so a cancelled
+                // sampling job cannot publish a false “still sampling” state just before
+                // exiting its loop.
+                val snapshotResult = try {
+                    Result.success(repository.fetchOpCounters())
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Result.failure(error)
+                }
                 snapshotResult.onSuccess { snapshot ->
                     val sample = sampler.onSnapshot(snapshot)
                     if (sample != null) {
@@ -276,7 +313,11 @@ class AdminController(
     }
 
     fun requestKillOp(opId: String) {
-        ctx.ensureWritable("killOp")
+        if (state.value.connectedReadOnly) {
+            state.update { it.copy(error = "当前连接为只读模式，已阻止：killOp") }
+            return
+        }
+        if (opId.isBlank()) return
         state.update {
             it.copy(
                 pendingDestructive = PendingDestructiveAction(
@@ -293,7 +334,9 @@ class AdminController(
 
     fun killOpConfirmed() {
         val opId = state.value.pendingDestructive?.target.orEmpty()
+        if (opId.isBlank()) return
         ctx.actions.run("killOp") {
+            ctx.ensureWritable("killOp")
             val result = repository.killOp(opId)
             state.update {
                 it.copy(

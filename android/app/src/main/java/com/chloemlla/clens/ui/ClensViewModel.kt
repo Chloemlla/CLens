@@ -63,7 +63,7 @@ class ClensViewModel(
     init {
         sessionHealth.ctx = ctx
         ctx.refreshProfiles(status = "连接配置已加载")
-        ctx.refreshLocalLists()
+        ctx.refreshLocalLists(resetSqlGuideState = true)
         ctx.refreshLatencyState()
         _state.update {
             it.copy(
@@ -208,6 +208,7 @@ class ClensViewModel(
     fun updateFavoriteNameInput(value: String) = query.updateFavoriteNameInput(value)
     fun saveCurrentQueryFavorite() = query.saveCurrentQueryFavorite()
     fun restoreQueryFavorite(id: String) = query.restoreQueryFavorite(id)
+    fun requestDeleteQueryFavorite(id: String) = query.requestDeleteQueryFavorite(id)
     fun deleteQueryFavorite(id: String) = query.deleteQueryFavorite(id)
     fun suggestedQueryFields(): List<String> = query.suggestedQueryFields()
 
@@ -432,6 +433,8 @@ class ClensViewModel(
             DestructiveAction.DropGridFsFile -> advanced.deleteGridFsConfirmed()
             DestructiveAction.ImportDropCollection -> advanced.importConfirmed()
             DestructiveAction.KillOp -> admin.killOpConfirmed()
+            DestructiveAction.ClearOpsHistory -> admin.clearOpsHistoryConfirmed()
+            DestructiveAction.DeleteQueryFavorite -> query.deleteQueryFavoriteConfirmed()
         }
     }
 

@@ -196,6 +196,8 @@ data class QueryHistoryEntry(
     val modeAggregate: Boolean,
     val database: String,
     val collection: String,
+    /** Profile that owns this namespace; null marks a legacy unscoped entry. */
+    val connectionId: String? = null,
     val filterJson: String = "{}",
     val sortJson: String = "{}",
     val projectionJson: String = "{}",
@@ -214,6 +216,8 @@ data class QueryFavoriteEntry(
     val name: String,
     val database: String = "",
     val collection: String = "",
+    /** Profile that owns this namespace; null marks a legacy unscoped entry. */
+    val connectionId: String? = null,
     val filterJson: String = "{}",
     val sortJson: String = "{}",
     val projectionJson: String = "{}",

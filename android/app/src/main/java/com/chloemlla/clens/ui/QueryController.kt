@@ -212,6 +212,7 @@ class QueryController(
             name = name,
             database = current.selectedDatabase,
             collection = current.selectedCollection,
+            connectionId = current.connectedProfileId,
             filterJson = filterJson,
             sortJson = current.querySortJson,
             projectionJson = current.queryProjectionJson,
@@ -264,6 +265,29 @@ class QueryController(
         if (current.isConnected && current.selectedCollection.isNotBlank()) {
             runQuery(withExplain = false, fromSql = false)
         }
+    }
+
+    fun requestDeleteQueryFavorite(id: String) {
+        val entry = state.value.queryFavorites.firstOrNull { it.id == id } ?: return
+        state.update {
+            it.copy(
+                pendingDestructive = PendingDestructiveAction(
+                    action = DestructiveAction.DeleteQueryFavorite,
+                    target = entry.id,
+                    message = "将永久删除查询收藏 `" + entry.name + "`。此操作不可恢复，请长按 3 秒确认。",
+                    confirmToken = entry.id,
+                    confirmMode = DestructiveConfirmMode.LongPress,
+                ),
+                destructiveConfirmInput = "",
+            )
+        }
+    }
+
+    fun deleteQueryFavoriteConfirmed() {
+        val id = state.value.pendingDestructive?.target.orEmpty()
+        if (id.isBlank()) return
+        deleteQueryFavorite(id)
+        state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "") }
     }
 
     fun deleteQueryFavorite(id: String) {
@@ -516,6 +540,7 @@ class QueryController(
             modeAggregate = aggregate,
             database = current.selectedDatabase,
             collection = current.selectedCollection,
+            connectionId = current.connectedProfileId,
             filterJson = filterJson,
             sortJson = current.querySortJson,
             projectionJson = current.queryProjectionJson,

@@ -55,6 +55,10 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             return@PanelColumn
         }
 
+        val canManageIndexes = !state.loading &&
+            state.selectedCollection.isNotBlank() &&
+            !state.writesBlocked
+
         SectionTitle(
             text = "索引",
             subtitle = "当前集合：" + state.selectedDatabase + "." + state.selectedCollection +
@@ -69,7 +73,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
             ) { Text("刷新索引") }
         }
-        JsonField("Keys JSON", state.indexKeysJson, !state.loading) {
+        JsonField("Keys JSON", state.indexKeysJson, canManageIndexes) {
             viewModel.updateText(ClensViewModel.Field.IndexKeys, it)
         }
         OutlinedTextField(
@@ -78,7 +82,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             label = { Text("索引名（可选）") },
-            enabled = !state.loading,
+            enabled = canManageIndexes,
         )
         OutlinedTextField(
             value = state.indexExpireAfterSeconds,
@@ -87,13 +91,13 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             singleLine = true,
             label = { Text("TTL expireAfterSeconds（可选）") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            enabled = !state.loading,
+            enabled = canManageIndexes,
         )
-        FlagRow("unique", state.indexUnique, !state.loading) { viewModel.setIndexFlags(unique = it) }
-        FlagRow("sparse", state.indexSparse, !state.loading) { viewModel.setIndexFlags(sparse = it) }
+        FlagRow("unique", state.indexUnique, canManageIndexes) { viewModel.setIndexFlags(unique = it) }
+        FlagRow("sparse", state.indexSparse, canManageIndexes) { viewModel.setIndexFlags(sparse = it) }
         Button(
             onClick = viewModel::createIndex,
-            enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
+            enabled = canManageIndexes && state.indexKeysJson.isNotBlank(),
         ) { Text("创建索引") }
 
         state.indexes.forEach { index ->
@@ -113,7 +117,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     Text(options, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
                         onClick = { viewModel.requestDropIndex(index.name) },
-                        enabled = !state.loading && !state.isSelectedView && index.name != "_id_",
+                        enabled = canManageIndexes && index.name != "_id_",
                     ) { Text("删除索引") }
                 }
             }

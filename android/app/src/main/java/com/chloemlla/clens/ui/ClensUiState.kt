@@ -48,6 +48,8 @@ enum class DestructiveAction {
     DropGridFsFile,
     ImportDropCollection,
     KillOp,
+    ClearOpsHistory,
+    DeleteQueryFavorite,
 }
 
 enum class DestructiveConfirmMode {

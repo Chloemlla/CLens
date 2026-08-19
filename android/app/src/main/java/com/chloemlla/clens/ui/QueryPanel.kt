@@ -128,6 +128,9 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                             onClick = {
                                 viewModel.updateText(ClensViewModel.Field.QueryPipeline, pipelineJson)
                                 pendingLoadPipeline = null
+                                scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                    if (!sheetState.isVisible) showTemplateSheet = false
+                                }
                             },
                         ) { Text("替换") }
                     },
@@ -167,9 +170,16 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
             when (state.queryInputMode) {
                 QueryInputMode.Visual -> {
+                    val suggestedFields = remember(
+                        state.queryResults,
+                        state.documents,
+                        state.indexes,
+                    ) {
+                        viewModel.suggestedQueryFields()
+                    }
                     VisualQueryBuilder(
                         clauses = state.queryVisualClauses,
-                        suggestedFields = viewModel.suggestedQueryFields(),
+                        suggestedFields = suggestedFields,
                         enabled = !state.loading,
                         onClauseChange = viewModel::updateVisualClause,
                         onAddClause = viewModel::addVisualClause,
@@ -296,7 +306,7 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                         modifier = Modifier.weight(1f),
                     ) { Text(item.title, maxLines = 1) }
                     OutlinedButton(
-                        onClick = { viewModel.deleteQueryFavorite(item.id) },
+                        onClick = { viewModel.requestDeleteQueryFavorite(item.id) },
                         enabled = !state.loading,
                     ) { Text("删除") }
                 }

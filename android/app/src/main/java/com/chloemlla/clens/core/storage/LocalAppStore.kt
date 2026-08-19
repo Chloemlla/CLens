@@ -65,7 +65,9 @@ class LocalAppStore(context: Context) {
     fun addQueryHistory(entry: QueryHistoryEntry) {
         synchronized(lock) {
             val next = (listOf(entry) + listQueryHistory())
-                .distinctBy { it.modeAggregate to it.database to it.collection to it.filterJson to it.pipelineJson }
+                .distinctBy {
+                    it.connectionId to it.modeAggregate to it.database to it.collection to it.filterJson to it.pipelineJson
+                }
                 .take(MAX_HISTORY)
             writeHistory(next)
         }
@@ -84,7 +86,10 @@ class LocalAppStore(context: Context) {
             val existing = listQueryFavorites()
             val withoutSameId = existing.filterNot { it.id == normalized.id }
             val next = (listOf(normalized) + withoutSameId)
-                .distinctBy { it.name.lowercase() to it.database to it.collection to it.filterJson to it.sortJson to it.projectionJson to it.modeAggregate to it.pipelineJson }
+                .distinctBy {
+                    it.connectionId to it.name.lowercase() to it.database to it.collection to it.filterJson to
+                        it.sortJson to it.projectionJson to it.modeAggregate to it.pipelineJson
+                }
                 .take(MAX_FAVORITES)
             writeFavorites(next)
         }
@@ -263,6 +268,7 @@ class LocalAppStore(context: Context) {
                     .put("modeAggregate", item.modeAggregate)
                     .put("database", item.database)
                     .put("collection", item.collection)
+                    .put("connectionId", item.connectionId ?: JSONObject.NULL)
                     .put("filterJson", item.filterJson)
                     .put("sortJson", item.sortJson)
                     .put("projectionJson", item.projectionJson)
@@ -284,6 +290,7 @@ class LocalAppStore(context: Context) {
                         modeAggregate = o.optBoolean("modeAggregate", false),
                         database = o.optString("database"),
                         collection = o.optString("collection"),
+                        connectionId = o.optString("connectionId").takeIf { it.isNotBlank() },
                         filterJson = o.optString("filterJson", "{}"),
                         sortJson = o.optString("sortJson", "{}"),
                         projectionJson = o.optString("projectionJson", "{}"),
@@ -304,6 +311,7 @@ class LocalAppStore(context: Context) {
                     .put("name", item.name)
                     .put("database", item.database)
                     .put("collection", item.collection)
+                    .put("connectionId", item.connectionId ?: JSONObject.NULL)
                     .put("filterJson", item.filterJson)
                     .put("sortJson", item.sortJson)
                     .put("projectionJson", item.projectionJson)
@@ -326,6 +334,7 @@ class LocalAppStore(context: Context) {
                         name = o.optString("name"),
                         database = o.optString("database"),
                         collection = o.optString("collection"),
+                        connectionId = o.optString("connectionId").takeIf { it.isNotBlank() },
                         filterJson = o.optString("filterJson", "{}"),
                         sortJson = o.optString("sortJson", "{}"),
                         projectionJson = o.optString("projectionJson", "{}"),

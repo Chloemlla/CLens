@@ -38,16 +38,28 @@ class ClensSessionContext(
     val actions: ClensActionRunner,
     val sessionHealth: SessionHealthController,
 ) {
-    fun refreshLocalLists() {
-        state.update {
-            it.copy(
-                queryHistory = localStore.listQueryHistory(),
-                queryFavorites = localStore.listQueryFavorites(),
+    fun refreshLocalLists(resetSqlGuideState: Boolean = false) {
+        state.update { current ->
+            current.copy(
+                // Queries carry the connection that created them. Do not offer an entry
+                // from profile A while connected to profile B: identical db/collection
+                // names can point at different data.
+                queryHistory = localStore.listQueryHistory()
+                    .filter { it.connectionId == current.connectedProfileId },
+                queryFavorites = localStore.listQueryFavorites()
+                    .filter { it.connectionId == current.connectedProfileId },
                 aggregateTemplates = localStore.listAggregateTemplates(),
                 auditLog = localStore.listAuditLog(),
                 verticalCatalogLists = localStore.isVerticalCatalogListsEnabled(),
-                querySqlGuideExpanded = !localStore.isSqlGuideSeen(),
-                offlineSnapshots = snapshotStore.list(connectionId = state.value.connectedProfileId),
+                // Only initialize this persisted preference during app bootstrap. Later
+                // list refreshes (e.g. saving a query) must not undo a user's in-session
+                // decision to re-open the guide.
+                querySqlGuideExpanded = if (resetSqlGuideState) {
+                    !localStore.isSqlGuideSeen()
+                } else {
+                    current.querySqlGuideExpanded
+                },
+                offlineSnapshots = snapshotStore.list(connectionId = current.connectedProfileId),
                 stagingItems = stagingStore.list(),
             )
         }
@@ -391,6 +403,9 @@ class ConnectionController(
                     healthScore = ctx.sessionHealth.getCurrentHealthScore(),
                 )
             }
+            // Query history/favorites are profile scoped. Refresh them immediately so
+            // a previous connection's entries cannot be restored during this session.
+            ctx.refreshLocalLists()
             onConnected()
         }
     }
