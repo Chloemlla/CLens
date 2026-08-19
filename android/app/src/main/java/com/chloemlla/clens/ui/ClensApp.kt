@@ -147,48 +147,45 @@ fun ClensApp(
             val isNarrow = width < 480.dp
             val isMedium = width < 640.dp
 
-            // Top app bar only on non-narrow screens; narrow uses bottom nav
-            val topBar = if (!isNarrow) {
-                @Composable {
-                    CenterAlignedTopAppBar(
-                        title = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Storage,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                                Column {
-                                    Text(text = "CLens", fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        text = if (state.isConnected) {
-                                            (state.connectedProfile?.name ?: "已连接") +
-                                                if (state.connectedReadOnly) " · 只读" else ""
-                                        } else {
-                                            "MongoDB 管理客户端"
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    )
-                }
-            } else null
-
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = topBar,
+                topBar = {
+                    if (!isNarrow) {
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Storage,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Column {
+                                        Text(text = "CLens", fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = if (state.isConnected) {
+                                                (state.connectedProfile?.name ?: "已连接") +
+                                                    if (state.connectedReadOnly) " · 只读" else ""
+                                            } else {
+                                                "MongoDB 管理客户端"
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        )
+                    }
+                },
                 bottomBar = if (isNarrow) {
                     @Composable {
                         NavigationBar(
@@ -217,11 +214,6 @@ fun ClensApp(
                                     selected = showOverflow,
                                     onClick = { showOverflow = !showOverflow },
                                 )
-                            }
-                            if (showOverflow) {
-                                // Render overflow as a temporary modal bottom sheet would be ideal,
-                                // but for simplicity we swap the bar items. Here we just log.
-                                // A proper implementation would use a ModalBottomSheet.
                             }
                         }
                     }
