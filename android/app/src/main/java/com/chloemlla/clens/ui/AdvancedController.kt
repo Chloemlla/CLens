@@ -66,13 +66,13 @@ class AdvancedController(
     }
 
     fun uploadGridFs() {
-        ctx.ensureWritable("GridFS 上传")
         val database = state.value.selectedDatabase
         if (database.isBlank()) {
             state.update { it.copy(error = "请先选择数据库。") }
             return
         }
         ctx.actions.run("上传 GridFS") {
+            ctx.ensureWritable("GridFS 上传")
             val id = repository.uploadGridFsText(
                 database = database,
                 filename = state.value.gridFsUploadName,
@@ -95,6 +95,11 @@ class AdvancedController(
     }
 
     fun requestDeleteGridFs(fileId: String) {
+        if (state.value.connectedReadOnly) {
+            state.update { it.copy(error = "当前连接为只读模式，已阻止：GridFS 删除") }
+            return
+        }
+        if (fileId.isBlank()) return
         state.update {
             it.copy(
                 pendingDestructive = PendingDestructiveAction(
@@ -110,11 +115,11 @@ class AdvancedController(
     }
 
     fun deleteGridFsConfirmed() {
-        ctx.ensureWritable("GridFS 删除")
         val database = state.value.selectedDatabase
         val fileId = state.value.pendingDestructive?.target.orEmpty()
         if (database.isBlank() || fileId.isBlank()) return
         ctx.actions.run("删除 GridFS 文件") {
+            ctx.ensureWritable("GridFS 删除")
             repository.deleteGridFsFile(database, fileId, state.value.gridFsBucket)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "GridFS 文件已删除") }
             ctx.recordAudit("gridfs.delete", fileId)
@@ -182,29 +187,29 @@ class AdvancedController(
         state.update {
             it.copy(
                 detailedUsers = users.getOrDefault(emptyList()),
-                detailedUsersError = users.exceptionOrNull()?.message,
+                // Driver messages can echo the connection string; scrub before display.
+                detailedUsersError = users.exceptionOrNull()?.message?.let(SecretSanitizer::sanitize),
                 roles = roles.getOrDefault(emptyList()),
-                rolesError = roles.exceptionOrNull()?.message,
+                rolesError = roles.exceptionOrNull()?.message?.let(SecretSanitizer::sanitize),
                 status = "用户/角色已刷新",
             )
         }
     }
 
     fun createUser() {
-        ctx.ensureWritable("创建用户")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         ctx.actions.run("创建用户") {
+            ctx.ensureWritable("创建用户")
             repository.createUser(
                 authDatabase = authDb,
                 user = state.value.createUserName,
                 password = state.value.createUserPassword,
                 rolesJson = state.value.createUserRolesJson,
             )
-            state.update {
-                it.copy(
+            state.update { current ->
+                current.copy(
                     createUserPassword = "",
-                    status = "用户已创建：" + state.value.createUserName,
-                
+                    status = "用户已创建：" + current.createUserName,
                 )
             }
             loadUsersAndRoles(authDb)
@@ -227,10 +232,11 @@ class AdvancedController(
     }
 
     fun dropUserConfirmed() {
-        ctx.ensureWritable("删除用户")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         val user = state.value.pendingDestructive?.target.orEmpty()
+        if (user.isBlank()) return
         ctx.actions.run("删除用户") {
+            ctx.ensureWritable("删除用户")
             repository.dropUser(authDb, user)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "用户已删除：" + user) }
             ctx.recordAudit("dropUser", user)
@@ -239,16 +245,16 @@ class AdvancedController(
     }
 
     fun createRole() {
-        ctx.ensureWritable("创建角色")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         ctx.actions.run("创建角色") {
+            ctx.ensureWritable("创建角色")
             repository.createRole(
                 authDatabase = authDb,
                 role = state.value.createRoleName,
                 privilegesJson = state.value.createRolePrivilegesJson,
                 rolesJson = state.value.createRoleRolesJson,
             )
-            state.update { it.copy(status = "角色已创建：" + state.value.createRoleName) }
+            state.update { current -> current.copy(status = "角色已创建：" + current.createRoleName) }
             ctx.recordAudit("createRole", state.value.createRoleName)
             loadUsersAndRoles(authDb)
         }
@@ -270,10 +276,11 @@ class AdvancedController(
     }
 
     fun dropRoleConfirmed() {
-        ctx.ensureWritable("删除角色")
         val authDb = state.value.authDatabaseInput.ifBlank { "admin" }
         val role = state.value.pendingDestructive?.target.orEmpty()
+        if (role.isBlank()) return
         ctx.actions.run("删除角色") {
+            ctx.ensureWritable("删除角色")
             repository.dropRole(authDb, role)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "角色已删除：" + role) }
             ctx.recordAudit("dropRole", role)
@@ -301,7 +308,6 @@ class AdvancedController(
     }
 
     fun importConfirmed() {
-        ctx.ensureWritable("导入文档")
         val database = state.value.selectedDatabase
         val collection = state.value.selectedCollection
         if (database.isBlank() || collection.isBlank()) {
@@ -312,6 +318,7 @@ class AdvancedController(
         val dropBefore = state.value.importDropBefore
         val payload = state.value.importJson
         ctx.actions.run("导入文档") {
+            ctx.ensureWritable("导入文档")
             try {
                 val count = repository.importDocuments(
                     database = database,

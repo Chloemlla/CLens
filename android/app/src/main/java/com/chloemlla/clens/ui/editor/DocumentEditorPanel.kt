@@ -109,31 +109,25 @@ internal fun DocumentEditorPanel(
     var menuPath by remember { mutableStateOf<String?>(null) }
     var fullScreenPath by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    // TextFieldValue is the single source of truth for the search box. Deriving it from
+    // a separate query string via remember(query) rebuilt the value on every keystroke,
+    // which reset the selection to 0 and reversed typed input.
+    var searchFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var searchMatchIndex by remember { mutableStateOf(0) }
+    val searchQuery = searchFieldValue.text
 
     val allMatches = remember(editor.root, searchQuery) {
         if (searchQuery.isNotBlank()) DocNodeCodec.findMatches(editor.root, searchQuery) else emptyList()
     }
     val matchCount = allMatches.size
-    val currentMatchPath by remember(allMatches, searchMatchIndex) {
-        mutableStateOf(if (allMatches.isNotEmpty()) allMatches.getOrElse(searchMatchIndex) { allMatches.first() } else null)
-    }
+    // Matched paths as a set so each rendered row is an O(1) lookup instead of a scan.
+    val matchedPathKeys = remember(allMatches) { allMatches.mapTo(mutableSetOf()) { it.pathKey } }
+    val currentMatchPath = allMatches.getOrNull(searchMatchIndex)
 
     // Reset match index when results change
     LaunchedEffect(matchCount) {
         if (searchMatchIndex >= matchCount) {
             searchMatchIndex = (matchCount - 1).coerceAtLeast(0)
-        }
-    }
-
-    // Sync search text across modes
-    var searchTextFieldValue by remember(searchQuery) {
-        mutableStateOf(TextFieldValue(searchQuery))
-    }
-    LaunchedEffect(searchQuery) {
-        if (searchTextFieldValue.text != searchQuery) {
-            searchTextFieldValue = TextFieldValue(searchQuery)
         }
     }
 
@@ -163,7 +157,7 @@ internal fun DocumentEditorPanel(
                         event.key == Key.Escape -> {
                             if (showSearch) {
                                 showSearch = false
-                                searchQuery = ""
+                                searchFieldValue = TextFieldValue("")
                                 true
                             } else {
                                 false
@@ -204,8 +198,7 @@ internal fun DocumentEditorPanel(
                 onClick = {
                     showSearch = !showSearch
                     if (showSearch) {
-                        searchQuery = ""
-                        searchTextFieldValue = TextFieldValue("")
+                        searchFieldValue = TextFieldValue("")
                         searchMatchIndex = 0
                     }
                 },
@@ -221,21 +214,25 @@ internal fun DocumentEditorPanel(
 
         // Search bar
         if (showSearch) {
+            // With no matches the upper bound would be -1, and coerceIn(0, -1) throws.
+            val lastMatchIndex = (matchCount - 1).coerceAtLeast(0)
             SearchBar(
-                query = searchTextFieldValue,
+                query = searchFieldValue,
                 onQueryChange = { newValue ->
-                    searchTextFieldValue = newValue
-                    searchQuery = newValue.text
+                    searchFieldValue = newValue
                     searchMatchIndex = 0
                 },
-                onSearch = { searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, matchCount - 1) },
+                onSearch = {
+                    if (matchCount > 0) {
+                        searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, lastMatchIndex)
+                    }
+                },
                 onClear = {
-                    searchQuery = ""
-                    searchTextFieldValue = TextFieldValue("")
+                    searchFieldValue = TextFieldValue("")
                     showSearch = false
                 },
-                onPrev = { searchMatchIndex = (searchMatchIndex - 1).coerceIn(0, (matchCount - 1).coerceAtLeast(0)) },
-                onNext = { searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, (matchCount - 1).coerceAtLeast(0)) },
+                onPrev = { searchMatchIndex = (searchMatchIndex - 1).coerceIn(0, lastMatchIndex) },
+                onNext = { searchMatchIndex = (searchMatchIndex + 1).coerceIn(0, lastMatchIndex) },
                 matchCount = matchCount,
                 currentIndex = searchMatchIndex,
             )
@@ -315,7 +312,7 @@ internal fun DocumentEditorPanel(
                     onConvertNodeType = onConvertNodeType,
                     onOpenFullScreen = { fullScreenPath = it },
                     searchQuery = searchQuery,
-                    searchMatches = allMatches,
+                    matchedPathKeys = matchedPathKeys,
                     currentMatchPath = currentMatchPath?.pathKey,
                 )
             }
@@ -401,7 +398,7 @@ private fun DocumentTreeView(
     onConvertNodeType: (pathKey: String, type: DocValueType) -> Unit,
     onOpenFullScreen: (String) -> Unit,
     searchQuery: String = "",
-    searchMatches: List<DocNode> = emptyList(),
+    matchedPathKeys: Set<String> = emptySet(),
     currentMatchPath: String? = null,
 ) {
     val rows = remember(root) { DocNodeCodec.flattenVisible(root) }
@@ -431,7 +428,7 @@ private fun DocumentTreeView(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             items(rows, key = { it.node.pathKey.ifBlank { "root" } }) { row ->
-                val isMatch = searchMatches.any { it.pathKey == row.node.pathKey }
+                val isMatch = row.node.pathKey in matchedPathKeys
                 val isCurrentMatch = currentMatchPath == row.node.pathKey
                 DocumentTreeRow(
                     row = row,
@@ -619,7 +616,8 @@ private fun SearchBar(
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        // The node can be detached before this runs (search toggled off quickly).
+        runCatching { focusRequester.requestFocus() }
     }
 
     Surface(
@@ -874,12 +872,15 @@ private fun LeafEditDialog(
                         }
                     }
                     DocValueType.GeoPoint -> {
-                        val point = DocNodeCodec.parseGeoPoint(text)
-                        var latText by remember(node.pathKey, text) {
-                            mutableStateOf(point?.first?.toString() ?: "0.0")
+                        // Local text is the editing source of truth; keying it on the
+                        // encoded value fed each keystroke back through encode/parse and
+                        // reformatted the number mid-typing.
+                        val seedPoint = remember(node.pathKey) { DocNodeCodec.parseGeoPoint(node.scalar.orEmpty()) }
+                        var latText by remember(node.pathKey) {
+                            mutableStateOf(seedPoint?.first?.toString() ?: "0.0")
                         }
-                        var lngText by remember(node.pathKey, text) {
-                            mutableStateOf(point?.second?.toString() ?: "0.0")
+                        var lngText by remember(node.pathKey) {
+                            mutableStateOf(seedPoint?.second?.toString() ?: "0.0")
                         }
                         OutlinedTextField(
                             value = latText,
@@ -937,12 +938,15 @@ private fun LeafEditDialog(
                         }
                     }
                     DocValueType.Binary -> {
-                        val binary = DocNodeCodec.parseBinary(text)
-                        var base64Text by remember(node.pathKey, text) {
-                            mutableStateOf(binary?.base64.orEmpty())
+                        // Same reasoning as GeoPoint: an incomplete Base64 string parses
+                        // to null, so keying local state on the encoded text wiped input
+                        // while the user was still typing.
+                        val seedBinary = remember(node.pathKey) { DocNodeCodec.parseBinary(node.scalar.orEmpty()) }
+                        var base64Text by remember(node.pathKey) {
+                            mutableStateOf(seedBinary?.base64.orEmpty())
                         }
-                        var subTypeText by remember(node.pathKey, text) {
-                            mutableStateOf(binary?.subType ?: "00")
+                        var subTypeText by remember(node.pathKey) {
+                            mutableStateOf(seedBinary?.subType ?: "00")
                         }
                         OutlinedTextField(
                             value = base64Text,

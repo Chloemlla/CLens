@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 @Composable
 internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
     val context = LocalContext.current
+    val writeEnabled = !state.loading && !state.writesBlocked
     PanelColumn(state = state, onDismissFeedback = viewModel::clearFeedback) {
         ClensAppHeader(state = state)
         SectionTitle(
@@ -41,6 +42,13 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 "collection: " + state.selectedCollection.ifBlank { "-" },
             ),
         )
+
+        if (state.connectedReadOnly) {
+            InfoCard(
+                title = "只读连接",
+                lines = listOf("当前连接为只读模式，写入类操作（上传、建用户/角色、导入、队列同步）均已禁用。"),
+            )
+        }
 
         // GridFS
         SectionTitle(text = "GridFS", subtitle = "默认 bucket=fs，上传文本并按 ObjectId 管理。")
@@ -66,7 +74,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("上传文本内容", state.gridFsUploadContent, !state.loading, minLines = 4) {
             viewModel.updateText(ClensViewModel.Field.GridFsUploadContent, it)
         }
-        Button(onClick = viewModel::uploadGridFs, enabled = !state.loading && state.selectedDatabase.isNotBlank()) { Text("上传到 GridFS") }
+        Button(onClick = viewModel::uploadGridFs, enabled = writeEnabled && state.selectedDatabase.isNotBlank()) { Text("上传到 GridFS") }
         state.gridFsError?.let { InfoCard(title = "GridFS 错误", lines = listOf(it)) }
         state.gridFsFiles.forEach { file ->
             InfoCard(
@@ -80,7 +88,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
             )
             ActionRow {
                 OutlinedButton(onClick = { viewModel.downloadGridFs(file.id) }, enabled = !state.loading) { Text("下载文本") }
-                OutlinedButton(onClick = { viewModel.requestDeleteGridFs(file.id) }, enabled = !state.loading) { Text("删除") }
+                OutlinedButton(onClick = { viewModel.requestDeleteGridFs(file.id) }, enabled = writeEnabled) { Text("删除") }
             }
         }
         if (state.gridFsDownloadContent.isNotBlank()) {
@@ -136,12 +144,12 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("用户 roles JSON", state.createUserRolesJson, !state.loading, minLines = 3) {
             viewModel.updateText(ClensViewModel.Field.CreateUserRolesJson, it)
         }
-        Button(onClick = viewModel::createUser, enabled = !state.loading) { Text("创建用户") }
+        Button(onClick = viewModel::createUser, enabled = writeEnabled) { Text("创建用户") }
         when {
             state.detailedUsersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.detailedUsersError ?: ""))
             state.detailedUsers.isNotEmpty() -> state.detailedUsers.forEach { user ->
                 InfoCard(title = user.user + "@" + user.db, lines = listOf(user.rolesJson))
-                OutlinedButton(onClick = { viewModel.requestDropUser(user.user) }, enabled = !state.loading) { Text("删除用户") }
+                OutlinedButton(onClick = { viewModel.requestDropUser(user.user) }, enabled = writeEnabled) { Text("删除用户") }
             }
             else -> InfoCard(title = "用户", lines = listOf("暂无用户数据。"))
         }
@@ -160,12 +168,12 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("roles JSON", state.createRoleRolesJson, !state.loading, minLines = 3) {
             viewModel.updateText(ClensViewModel.Field.CreateRoleRolesJson, it)
         }
-        Button(onClick = viewModel::createRole, enabled = !state.loading) { Text("创建角色") }
+        Button(onClick = viewModel::createRole, enabled = writeEnabled) { Text("创建角色") }
         when {
             state.rolesError != null -> InfoCard(title = "角色列表不可用", lines = listOf(state.rolesError ?: ""))
             state.roles.isNotEmpty() -> state.roles.forEach { role ->
                 InfoCard(title = role.role + "@" + role.db, lines = listOf(role.rolesJson, role.privilegesJson))
-                OutlinedButton(onClick = { viewModel.requestDropRole(role.role) }, enabled = !state.loading) { Text("删除角色") }
+                OutlinedButton(onClick = { viewModel.requestDropRole(role.role) }, enabled = writeEnabled) { Text("删除角色") }
             }
             else -> InfoCard(title = "角色", lines = listOf("暂无自定义角色数据。"))
         }
@@ -194,7 +202,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
             ) { Text("选择 JSON/CSV 文件") }
             Button(
                 onClick = viewModel::requestImport,
-                enabled = !state.loading && state.selectedCollection.isNotBlank() && !state.isSelectedView,
+                enabled = writeEnabled && state.selectedCollection.isNotBlank() && !state.isSelectedView,
             ) { Text("导入到当前集合") }
         }
         if (state.importSourceName.isNotBlank()) {
@@ -257,7 +265,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         SectionTitle(text = "待提交队列", subtitle = "写失败/导入失败后自动入队；网络恢复可同步。")
         ActionRow {
             OutlinedButton(onClick = viewModel::refreshStagingQueue, enabled = !state.loading) { Text("刷新队列") }
-            Button(onClick = viewModel::processStagingQueue, enabled = !state.loading && state.stagingItems.isNotEmpty()) { Text("同步队列") }
+            Button(onClick = viewModel::processStagingQueue, enabled = writeEnabled && state.stagingItems.isNotEmpty()) { Text("同步队列") }
         }
         if (state.stagingItems.isEmpty()) {
             InfoCard(title = "队列为空", lines = listOf("弱网插入/替换/导入失败会进入这里。"))
@@ -272,7 +280,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     ),
                 )
                 ActionRow {
-                    OutlinedButton(onClick = { viewModel.retryStagingItem(item.id) }, enabled = !state.loading) { Text("重试") }
+                    OutlinedButton(onClick = { viewModel.retryStagingItem(item.id) }, enabled = writeEnabled) { Text("重试") }
                     OutlinedButton(onClick = { viewModel.discardStagingItem(item.id) }, enabled = !state.loading) { Text("丢弃") }
                 }
             }
