@@ -220,7 +220,9 @@ fun ClensApp(
                             }
                         }
                     }
-                } else null,
+                } else {
+                    @Composable { Unit }
+                },
             ) { innerPadding ->
                 Column(
                     modifier = Modifier
