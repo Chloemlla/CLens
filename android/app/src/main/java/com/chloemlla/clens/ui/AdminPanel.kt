@@ -109,11 +109,15 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(index.name, fontWeight = FontWeight.SemiBold)
                     Text(index.keysJson, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                    val options = buildString {
-                        if (index.unique) append("unique ")
-                        if (index.sparse) append("sparse ")
-                        index.expireAfterSeconds?.let { append("ttl=").append(it).append(" ") }
-                    }.ifBlank { "options: default" }
+                    // Cached per index: recomposing the panel (loading flag, filters,
+                    // ops refresh) must not rebuild this string for every index card.
+                    val options = remember(index) {
+                        buildString {
+                            if (index.unique) append("unique ")
+                            if (index.sparse) append("sparse ")
+                            index.expireAfterSeconds?.let { append("ttl=").append(it).append(" ") }
+                        }.ifBlank { "options: default" }
+                    }
                     Text(options, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(
                         onClick = { viewModel.requestDropIndex(index.name) },
@@ -189,6 +193,13 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                         CurrentOpFilters.matchesFilter(op, opFilter) && CurrentOpFilters.matchesQuery(op, opQuery)
                     }
                 }
+                // currentOp can report hundreds of operations. This panel scrolls inside
+                // PanelColumn, so a LazyColumn cannot be nested here; cap how many cards
+                // compose at once instead and let the user grow the page on demand. The
+                // remember key resets the cap whenever the filtered set changes.
+                var opsVisibleCount by remember(filteredOps) { mutableStateOf(LIST_DISPLAY_PAGE_SIZE) }
+                val opsShown = opsVisibleCount.coerceAtMost(filteredOps.size)
+                val visibleOps = remember(filteredOps, opsShown) { filteredOps.take(opsShown) }
                 Text(
                     text = "当前操作筛选：" + filteredOps.size + " / " + state.currentOps.size,
                     style = MaterialTheme.typography.labelMedium,
@@ -223,7 +234,7 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                         lines = listOf("当前筛选条件下没有 currentOp，可切换“全部”或清空搜索。"),
                     )
                 }
-                filteredOps.forEach { op ->
+                visibleOps.forEach { op ->
                     val secs = op.secsRunning
                     val slow = secs != null && secs >= CurrentOpFilters.SLOW_OP_SECS_THRESHOLD
                     Card(
@@ -286,6 +297,12 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
                         }
                     }
                 }
+                ListDisplayLimitNotice(
+                    shown = opsShown,
+                    total = filteredOps.size,
+                    enabled = !state.loading,
+                    onLoadMore = { opsVisibleCount = opsShown + LIST_DISPLAY_PAGE_SIZE },
+                )
             }
             state.currentOpsJson.isNotBlank() -> JsonField("currentOp", state.currentOpsJson, enabled = false, minLines = 8) {}
             else -> InfoCard(title = "currentOp", lines = listOf("暂无当前操作数据。点击刷新。"))

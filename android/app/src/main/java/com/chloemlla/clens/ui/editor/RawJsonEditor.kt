@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -32,16 +31,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * Hard ceiling for Raw mode. Above this the editor is read-only and renders unstyled text.
+ * Measured in characters as a cheap stand-in for UTF-8 bytes (JSON is mostly ASCII) so that
+ * a keystroke never copies the whole document via [String.toByteArray].
+ */
+internal const val RAW_JSON_HARD_LIMIT_BYTES = 5 * 1024 * 1024
+
+/** Above this size syntax highlighting and bracket matching are dropped to keep typing responsive. */
+internal const val RAW_JSON_RICH_TEXT_LIMIT_CHARS = 200 * 1024
+
+/** Above this line count the gutter is hidden instead of laying out one number per line. */
+internal const val RAW_JSON_MAX_GUTTER_LINES = 2000
 
 /**
  * Syntax highlighting colors for Raw JSON mode.
@@ -91,8 +107,12 @@ fun RawJsonEditor(
     var cursorPosition by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(jsonText) {
+        // Only rebuild when the external text really differs from what the user typed, and
+        // keep the caret where it was (clamped) instead of slamming it to the end on every
+        // parent-side normalization.
         if (textFieldValue.text != jsonText) {
-            textFieldValue = TextFieldValue(jsonText, TextRange(jsonText.length))
+            val caret = textFieldValue.selection.start.coerceIn(0, jsonText.length)
+            textFieldValue = TextFieldValue(jsonText, TextRange(caret))
         }
     }
 
@@ -113,28 +133,61 @@ fun RawJsonEditor(
         )
     }
 
-    val lineCount = remember(textFieldValue.text) { textFieldValue.text.count { it == '\n' } + 1 }
+    val text = textFieldValue.text
+    // Character count instead of toByteArray().size: the old version copied the whole
+    // document on every keystroke just to render a size label.
+    val approxBytes = text.length
+    val overHardLimit = approxBytes > RAW_JSON_HARD_LIMIT_BYTES
+    // Past the hard limit the editor is genuinely read-only; it used to keep accepting edits
+    // while telling the user Raw mode was disabled.
+    val editingEnabled = enabled && !overHardLimit
+    // Large text drops highlighting and bracket matching so a keystroke does not re-scan
+    // the entire document.
+    val richText = !overHardLimit && approxBytes <= RAW_JSON_RICH_TEXT_LIMIT_CHARS
+
+    val lineCount = remember(text) {
+        if (approxBytes > RAW_JSON_RICH_TEXT_LIMIT_CHARS) 0 else text.count { it == '\n' } + 1
+    }
+    val showGutter = lineCount in 1..RAW_JSON_MAX_GUTTER_LINES
+    val gutterDigits = lineCount.toString().length
+    // One newline-joined string rather than a Text per line: a 10k-line document used to
+    // compose 10k Text nodes.
+    val gutterText = remember(lineCount) {
+        if (lineCount !in 1..RAW_JSON_MAX_GUTTER_LINES) {
+            ""
+        } else {
+            val digits = lineCount.toString().length
+            buildString(lineCount * (digits + 1)) {
+                for (i in 1..lineCount) {
+                    if (i > 1) append('\n')
+                    append(i.toString().padStart(digits))
+                }
+            }
+        }
+    }
+
+    val notice: Pair<String, Boolean>? = when {
+        overHardLimit ->
+            "文档过大（约 ${approxBytes / 1024 / 1024}MB > 5MB），Raw 模式已切换为只读，并关闭语法高亮" to true
+        !richText ->
+            "文本较大（约 ${approxBytes / 1024}KB），已关闭语法高亮、括号匹配与行号以保持输入流畅" to false
+        !showGutter ->
+            "行数超过 $RAW_JSON_MAX_GUTTER_LINES，已隐藏行号以保持滚动流畅" to false
+        else -> null
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Toolbar
         RawJsonToolbar(
-            textFieldValue = textFieldValue.text,
-            enabled = enabled,
+            textFieldValue = text,
+            enabled = editingEnabled,
             validationResult = validationResult,
             onValidateRequest = onValidateRequest,
             onJsonChange = onJsonChange,
         )
 
-        // Size warning
-        val sizeBytes = remember(textFieldValue.text) { textFieldValue.text.toByteArray().size }
-        val sizeWarning = remember(sizeBytes) {
-            when {
-                sizeBytes > 5 * 1024 * 1024 -> "文档过大（${sizeBytes / 1024 / 1024}MB > 5MB），Raw 模式已禁用" to true
-                sizeBytes > 1024 * 1024 -> "文档较大（${sizeBytes / 1024 / 1024}MB），操作可能较慢" to false
-                else -> null
-            }
-        }
-        sizeWarning?.let { (msg, isError) ->
+        // Size / degradation notice
+        notice?.let { (msg, isError) ->
             Text(
                 text = msg,
                 style = MaterialTheme.typography.bodySmall,
@@ -151,71 +204,80 @@ fun RawJsonEditor(
                 .fillMaxWidth()
                 .heightIn(min = 200.dp, max = 400.dp),
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                // Line numbers gutter
-                val maxLineDigits = lineCount.toString().length
-                Box(
-                    modifier = Modifier
-                        .width((maxLineDigits * 10 + 16).dp)
-                        .fillMaxHeight()
-                        .background(colors.lineNumBg)
-                        .verticalScroll(verticalScrollState),
-                    contentAlignment = Alignment.TopEnd,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.End,
-                    ) {
-                        for (i in 1..lineCount) {
-                            Text(
-                                text = i.toString().padStart(maxLineDigits),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 13.sp,
-                                    lineHeight = 20.sp,
-                                ),
-                                color = colors.lineNum,
-                                textAlign = TextAlign.End,
-                            )
-                        }
-                    }
+            // Exactly one scrollable owns the vertical axis. The gutter and the body used to
+            // share a single ScrollState, so maxValue depended on whichever measured last and
+            // long documents scrolled out of sync / got clipped.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(verticalScrollState),
+            ) {
+                // Line numbers gutter (single Text, scrolls with the body)
+                if (showGutter) {
+                    Text(
+                        text = gutterText,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                        ),
+                        color = colors.lineNum,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier
+                            .width((gutterDigits * 10 + 16).dp)
+                            .background(colors.lineNumBg)
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                    )
                 }
 
                 // Editor content
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
                         .horizontalScroll(horizontalScrollState)
-                        .verticalScroll(verticalScrollState)
                         .background(colors.surface)
                         .padding(8.dp),
                 ) {
-                    val annotated = remember(textFieldValue.text, isDarkTheme) {
-                        highlightJson(textFieldValue.text, colors)
-                    }
-
-                    val bracketMatchPair = remember(textFieldValue.text, cursorPosition) {
-                        findMatchingBracket(textFieldValue.text, cursorPosition)
-                    }
-
-                    val highlighted = remember(annotated, bracketMatchPair, isDarkTheme) {
-                        if (bracketMatchPair != null) {
-                            val (openIdx, closeIdx) = bracketMatchPair
-                            buildAnnotatedString {
-                                append(annotated)
-                                val highlightColor = if (isDarkTheme) Color(0xFFFBBF24).copy(alpha = 0.4f)
-                                                      else Color(0xFFFBBF24).copy(alpha = 0.3f)
-                                if (openIdx in 0 until this.length) {
-                                    addStyle(SpanStyle(background = highlightColor), openIdx, (openIdx + 1).coerceAtMost(length))
-                                }
-                                if (closeIdx in 0 until this.length) {
-                                    addStyle(SpanStyle(background = highlightColor), closeIdx, (closeIdx + 1).coerceAtMost(length))
-                                }
-                            }
-                        } else {
-                            annotated
+                    // Highlight work is skipped entirely for large documents: these passes
+                    // are O(n) per keystroke. They are also only meaningful when applied
+                    // through the visual transformation below.
+                    val highlighted: AnnotatedString? = if (richText) {
+                        val annotated = remember(text, isDarkTheme) { highlightJson(text, colors) }
+                        val bracketMatchPair = remember(text, cursorPosition) {
+                            findMatchingBracket(text, cursorPosition)
                         }
+                        remember(annotated, bracketMatchPair, isDarkTheme) {
+                            if (bracketMatchPair != null) {
+                                val (openIdx, closeIdx) = bracketMatchPair
+                                buildAnnotatedString {
+                                    append(annotated)
+                                    val highlightColor = if (isDarkTheme) {
+                                        Color(0xFFFBBF24).copy(alpha = 0.4f)
+                                    } else {
+                                        Color(0xFFFBBF24).copy(alpha = 0.3f)
+                                    }
+                                    if (openIdx in 0 until length) {
+                                        addStyle(SpanStyle(background = highlightColor), openIdx, (openIdx + 1).coerceAtMost(length))
+                                    }
+                                    if (closeIdx in 0 until length) {
+                                        addStyle(SpanStyle(background = highlightColor), closeIdx, (closeIdx + 1).coerceAtMost(length))
+                                    }
+                                }
+                            } else {
+                                annotated
+                            }
+                        }
+                    } else {
+                        null
+                    }
+
+                    // The highlighted string was previously computed and then dropped, so
+                    // Raw mode rendered as plain text. Feed it through a transformation
+                    // that preserves offsets, which is what makes the colors visible.
+                    val visualTransformation = if (highlighted != null && highlighted.length == text.length) {
+                        VisualTransformation { TransformedText(highlighted, OffsetMapping.Identity) }
+                    } else {
+                        VisualTransformation.None
                     }
 
                     BasicTextField(
@@ -234,10 +296,11 @@ fun RawJsonEditor(
                         ),
                         cursorBrush = SolidColor(colors.cursorColor),
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = enabled,
+                        enabled = editingEnabled,
+                        visualTransformation = visualTransformation,
                         decorationBox = { innerTextField ->
                             Box {
-                                if (textFieldValue.text.isEmpty()) {
+                                if (text.isEmpty()) {
                                     Text(
                                         text = "输入或粘贴 JSON...",
                                         style = MaterialTheme.typography.bodySmall.copy(
@@ -377,6 +440,9 @@ private fun findWordExtent(text: String, start: Int): Int {
 
 /**
  * Find matching bracket position. Returns (cursorBracketIdx, matchingBracketIdx) or null.
+ *
+ * Brackets inside string literals are skipped: counting them shifted the depth and paired
+ * the caret with the wrong bracket whenever a JSON value contained `{}` or `[]`.
  */
 private fun findMatchingBracket(text: String, cursor: Int): Pair<Int, Int>? {
     if (cursor !in text.indices) return null
@@ -384,53 +450,86 @@ private fun findMatchingBracket(text: String, cursor: Int): Pair<Int, Int>? {
     val isOpen = ch == '{' || ch == '['
     val isClose = ch == '}' || ch == ']'
     if (!isOpen && !isClose) return null
+    if (indexIsInsideString(text, cursor)) return null
 
     val targetOpen = when (ch) {
-        '{' -> '{'
-        '}' -> '{'
-        '[' -> '['
-        ']' -> '['
+        '{', '}' -> '{'
+        '[', ']' -> '['
         else -> return null
     }
     val targetClose = when (ch) {
-        '{' -> '}'
-        '}' -> '}'
-        '[' -> ']'
-        ']' -> ']'
+        '{', '}' -> '}'
+        '[', ']' -> ']'
         else -> return null
     }
 
+    // Precompute which offsets sit inside a string once, then scan only real structure.
+    val inString = stringMask(text)
+
     return if (isOpen) {
-        // Find matching close going forward
         var depth = 0
         var i = cursor
         while (i < text.length) {
-            val c = text[i]
-            if (c == targetOpen) depth++
-            if (c == targetClose) {
-                depth--
-                if (depth == 0) return cursor to i
+            if (!inString[i]) {
+                val c = text[i]
+                if (c == targetOpen) depth++
+                if (c == targetClose) {
+                    depth--
+                    if (depth == 0) return cursor to i
+                }
             }
-            if (c == '\\' && i + 1 < text.length) i++
             i++
         }
         null
     } else {
-        // close bracket - find matching open going backward
         var depth = 0
         var i = cursor
         while (i >= 0) {
-            val c = text[i]
-            if (c == targetClose) depth++
-            if (c == targetOpen) {
-                depth--
-                if (depth == 0) return cursor to i
+            if (!inString[i]) {
+                val c = text[i]
+                if (c == targetClose) depth++
+                if (c == targetOpen) {
+                    depth--
+                    if (depth == 0) return cursor to i
+                }
             }
-            if (c == '\\' && i > 0) i--
             i--
         }
         null
     }
+}
+
+/**
+ * Marks every offset that falls inside a JSON string literal, quotes included, honouring
+ * backslash escapes so an escaped quote does not end the string.
+ */
+private fun stringMask(text: String): BooleanArray {
+    val mask = BooleanArray(text.length)
+    var inside = false
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (inside) {
+            mask[i] = true
+            when {
+                c == '\\' && i + 1 < text.length -> {
+                    mask[i + 1] = true
+                    i++
+                }
+                c == '"' -> inside = false
+            }
+        } else if (c == '"') {
+            inside = true
+            mask[i] = true
+        }
+        i++
+    }
+    return mask
+}
+
+private fun indexIsInsideString(text: String, index: Int): Boolean {
+    if (index !in text.indices) return false
+    return stringMask(text)[index]
 }
 
 @Composable
@@ -454,8 +553,14 @@ private fun RawJsonToolbar(
         FilterChip(
             selected = false,
             onClick = {
-                val formatted = JsonCodeAssist.formatJsonIfValid(textFieldValue) ?: textFieldValue
-                onJsonChange(formatted)
+                // Silently returning the original text made the button look broken on
+                // invalid JSON; say why nothing changed.
+                val formatted = JsonCodeAssist.formatJsonIfValid(textFieldValue)
+                if (formatted == null) {
+                    Toast.makeText(context, "JSON 不合法，无法格式化", Toast.LENGTH_SHORT).show()
+                } else {
+                    onJsonChange(formatted)
+                }
             },
             enabled = enabled,
             label = { Text("格式化") },
@@ -464,7 +569,11 @@ private fun RawJsonToolbar(
             selected = false,
             onClick = {
                 val compacted = JsonCodeAssist.compactJson(textFieldValue)
-                onJsonChange(compacted)
+                if (compacted == textFieldValue) {
+                    Toast.makeText(context, "JSON 不合法或已是压缩形式", Toast.LENGTH_SHORT).show()
+                } else {
+                    onJsonChange(compacted)
+                }
             },
             enabled = enabled,
             label = { Text("压缩") },

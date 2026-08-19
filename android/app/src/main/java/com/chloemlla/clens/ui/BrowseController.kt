@@ -94,10 +94,11 @@ class BrowseController(
                 ClensViewModel.Field.OfflineSnapshotName -> current.copy(offlineSnapshotNameInput = value)
                 ClensViewModel.Field.EditorJson -> {
                     val diagnostics = JsonCodeAssist.diagnosticMessages(value)
+                    // Keep the current mode: this callback is shared by the Code and Raw
+                    // editors, and mode changes belong to setDocumentEditorMode only.
                     current.copy(
                         editorJson = value,
                         documentEditor = current.documentEditor.copy(
-                            mode = DocumentEditorMode.Code,
                             codeText = value,
                             codeDiagnostics = diagnostics,
                             dirty = true,

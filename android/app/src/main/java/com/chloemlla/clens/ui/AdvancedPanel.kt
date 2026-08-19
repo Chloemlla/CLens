@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.chloemlla.clens.core.export.DocumentExportFormat
 import java.io.File
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material3.Button
@@ -15,9 +16,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
@@ -181,18 +187,27 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         // Import/export
         SectionTitle(text = "导入 / 导出", subtitle = "文件导入映射 + 多格式导出分享；失败写入待提交队列。")
         FlagRow("导入前删除集合", state.importDropBefore, !state.loading, viewModel::setImportDropBefore)
+        val importScope = rememberCoroutineScope()
         val importLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenDocument(),
         ) { uri: Uri? ->
             if (uri == null) return@rememberLauncherForActivityResult
             val name = uri.lastPathSegment?.substringAfterLast('/') ?: "import.bin"
-            val text = runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-            }.getOrNull()
-            if (text.isNullOrBlank()) {
-                Toast.makeText(context, "无法读取所选文件", Toast.LENGTH_SHORT).show()
-            } else {
-                viewModel.prepareImportFromText(name, text)
+            // Reading the whole document can span megabytes; the activity-result callback
+            // runs on the main thread, so move the read off it before parsing.
+            importScope.launch {
+                val text = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openInputStream(uri)
+                            ?.bufferedReader(Charsets.UTF_8)
+                            ?.use { reader -> reader.readText() }
+                    }.getOrNull()
+                }
+                if (text.isNullOrBlank()) {
+                    Toast.makeText(context, "无法读取所选文件", Toast.LENGTH_SHORT).show()
+                } else {
+                    viewModel.prepareImportFromText(name, text)
+                }
             }
         }
         ActionRow {
@@ -217,12 +232,31 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         JsonField("导入 JSON 数组", state.importJson, !state.loading, minLines = 6) {
             viewModel.updateText(ClensViewModel.Field.ImportJson, it)
         }
+        val exportLimitValue = state.exportLimit.trim().toIntOrNull()
+        val exportLimitInvalid = state.exportLimit.isNotBlank() &&
+            (exportLimitValue == null ||
+                exportLimitValue !in AdvancedController.MIN_EXPORT_LIMIT..AdvancedController.MAX_EXPORT_LIMIT)
         OutlinedTextField(
             value = state.exportLimit,
             onValueChange = { viewModel.updateText(ClensViewModel.Field.ExportLimit, it) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             label = { Text("导出 limit") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            isError = exportLimitInvalid,
+            // The value used to be silently coerced, so an invalid entry exported a
+            // different count than the field showed.
+            supportingText = {
+                Text(
+                    if (exportLimitInvalid) {
+                        "需 " + AdvancedController.MIN_EXPORT_LIMIT + ".." +
+                            AdvancedController.MAX_EXPORT_LIMIT + " 的整数，当前值将回退为 " +
+                            AdvancedController.DEFAULT_EXPORT_LIMIT
+                    } else {
+                        "范围 " + AdvancedController.MIN_EXPORT_LIMIT + ".." + AdvancedController.MAX_EXPORT_LIMIT
+                    },
+                )
+            },
             enabled = !state.loading,
         )
         ActionRow {
@@ -245,13 +279,29 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     if (state.exportJson.isBlank()) {
                         Toast.makeText(context, "没有可分享的导出内容", Toast.LENGTH_SHORT).show()
                     } else {
-                        runCatching {
-                            val dir = File(context.cacheDir, "export").apply { mkdirs() }
-                            val file = File(dir, "clens-export." + state.exportFormat.extension)
-                            file.writeText(state.exportJson, Charsets.UTF_8)
-                            shareFile(context, "CLens export", file, state.exportFormat.mimeType)
-                        }.onFailure {
-                            shareText(context, "CLens export", state.exportJson)
+                        val payload = state.exportJson
+                        val extension = state.exportFormat.extension
+                        val mimeType = state.exportFormat.mimeType
+                        importScope.launch {
+                            // Writing the export can be megabytes of IO; keep it off the
+                            // main thread and reuse a single temp file per format.
+                            val file = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    val dir = File(context.cacheDir, "export").apply { mkdirs() }
+                                    File(dir, "clens-export." + extension).apply {
+                                        delete()
+                                        writeText(payload, Charsets.UTF_8)
+                                    }
+                                }.getOrNull()
+                            }
+                            if (file == null) {
+                                // The previous fallback put the whole export into an Intent
+                                // extra, which throws TransactionTooLargeException on big
+                                // payloads. Report the failure instead.
+                                Toast.makeText(context, "无法写出导出文件，分享已取消", Toast.LENGTH_SHORT).show()
+                            } else {
+                                shareFile(context, "CLens export", file, mimeType)
+                            }
                         }
                     }
                 },
@@ -270,7 +320,8 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.stagingItems.isEmpty()) {
             InfoCard(title = "队列为空", lines = listOf("弱网插入/替换/导入失败会进入这里。"))
         } else {
-            state.stagingItems.take(30).forEach { item ->
+            val stagingShown = state.stagingItems.size.coerceAtMost(STAGING_DISPLAY_LIMIT)
+            state.stagingItems.take(stagingShown).forEach { item ->
                 InfoCard(
                     title = item.type.name + " · " + item.status.name,
                     lines = listOf(
@@ -284,6 +335,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     OutlinedButton(onClick = { viewModel.discardStagingItem(item.id) }, enabled = !state.loading) { Text("丢弃") }
                 }
             }
+            ListDisplayLimitNotice(shown = stagingShown, total = state.stagingItems.size)
         }
 
         SectionTitle(text = "本地审计日志", subtitle = "仅记录本机危险操作，最多 100 条。")
@@ -294,7 +346,8 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.auditLog.isEmpty()) {
             InfoCard(title = "暂无审计事件", lines = listOf("删除/compact/导入覆盖/用户角色变更会写入这里。"))
         } else {
-            state.auditLog.take(20).forEach { item ->
+            val auditShown = state.auditLog.size.coerceAtMost(AUDIT_DISPLAY_LIMIT)
+            state.auditLog.take(auditShown).forEach { item ->
                 InfoCard(
                     title = item.action,
                     lines = listOf(
@@ -304,8 +357,15 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     ),
                 )
             }
+            ListDisplayLimitNotice(shown = auditShown, total = state.auditLog.size)
         }
     }
 }
+
+/** Staging queue rows rendered at once; the rest are reported by the truncation notice. */
+private const val STAGING_DISPLAY_LIMIT = 30
+
+/** Audit rows rendered at once; the rest are reported by the truncation notice. */
+private const val AUDIT_DISPLAY_LIMIT = 20
 
 

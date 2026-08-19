@@ -9,8 +9,10 @@ import com.chloemlla.clens.core.storage.StagingOpType
 import com.chloemlla.clens.core.storage.StagingQueueRules
 import com.chloemlla.clens.core.util.SecretSanitizer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 
 class AdvancedController(
     private val ctx: ClensSessionContext,
@@ -49,8 +51,27 @@ class AdvancedController(
             state.update { it.copy(error = "请先在「浏览」选择数据库。") }
             return
         }
-        ctx.actions.run("刷新 GridFS") {
+        runGridFsAction("刷新 GridFS") {
             loadGridFs(database)
+        }
+    }
+
+    /**
+     * Runs a GridFS action and mirrors its failure into [ClensUiState.gridFsError] so the
+     * GridFS error card is reachable, then rethrows for the global banner/loading handling.
+     */
+    private fun runGridFsAction(label: String, block: suspend () -> Unit) {
+        ctx.actions.run(label) {
+            try {
+                block()
+            } catch (error: Throwable) {
+                // Driver messages can echo the connection string; scrub before display.
+                val message = SecretSanitizer.sanitize(
+                    error.message?.takeIf { text -> text.isNotBlank() } ?: (label + "失败"),
+                )
+                state.update { it.copy(gridFsError = message) }
+                throw error
+            }
         }
     }
 
@@ -71,7 +92,7 @@ class AdvancedController(
             state.update { it.copy(error = "请先选择数据库。") }
             return
         }
-        ctx.actions.run("上传 GridFS") {
+        runGridFsAction("上传 GridFS") {
             ctx.ensureWritable("GridFS 上传")
             val id = repository.uploadGridFsText(
                 database = database,
@@ -88,9 +109,9 @@ class AdvancedController(
     fun downloadGridFs(fileId: String) {
         val database = state.value.selectedDatabase
         if (database.isBlank()) return
-        ctx.actions.run("下载 GridFS") {
+        runGridFsAction("下载 GridFS") {
             val content = repository.downloadGridFsText(database, fileId, state.value.gridFsBucket)
-            state.update { it.copy(gridFsDownloadContent = content, status = "已下载文件内容") }
+            state.update { it.copy(gridFsDownloadContent = content, gridFsError = null, status = "已下载文件内容") }
         }
     }
 
@@ -118,7 +139,7 @@ class AdvancedController(
         val database = state.value.selectedDatabase
         val fileId = state.value.pendingDestructive?.target.orEmpty()
         if (database.isBlank() || fileId.isBlank()) return
-        ctx.actions.run("删除 GridFS 文件") {
+        runGridFsAction("删除 GridFS 文件") {
             ctx.ensureWritable("GridFS 删除")
             repository.deleteGridFsFile(database, fileId, state.value.gridFsBucket)
             state.update { it.copy(pendingDestructive = null, destructiveConfirmInput = "", status = "GridFS 文件已删除") }
@@ -336,28 +357,33 @@ class AdvancedController(
                 ctx.recordAudit("importDocuments", database + "." + collection, "count=" + count)
             } catch (error: Throwable) {
                 if (connectionId.isNullOrBlank()) throw error
-                val docs = runCatching { DocumentImportCodecs.parseJsonArrayToDocStrings(payload) }
-                    .getOrDefault(emptyList())
-                val chunks = DocumentImportCodecs.chunk(docs, StagingQueueRules.IMPORT_CHUNK_SIZE)
-                if (chunks.isEmpty()) throw error
-                chunks.forEachIndexed { index, chunk ->
-                    ctx.stagingStore.enqueue(
-                        type = StagingOpType.IMPORT_CHUNK,
-                        connectionId = connectionId,
-                        database = database,
-                        collection = collection,
-                        payloadJson = DocumentImportCodecs.toJsonArrayPayload(chunk),
-                        dropBeforeImport = dropBefore && index == 0,
-                        chunkIndex = index,
-                        chunkCount = chunks.size,
-                    )
-                }
+                // Codec parsing plus queue enqueue are CPU + file IO; keep them off the main thread.
+                val queued = withContext(Dispatchers.IO) {
+                    val docs = runCatching { DocumentImportCodecs.parseJsonArrayToDocStrings(payload) }
+                        .getOrDefault(emptyList())
+                    val chunks = DocumentImportCodecs.chunk(docs, StagingQueueRules.IMPORT_CHUNK_SIZE)
+                    if (chunks.isEmpty()) return@withContext null
+                    chunks.forEachIndexed { index, chunk ->
+                        ctx.stagingStore.enqueue(
+                            type = StagingOpType.IMPORT_CHUNK,
+                            connectionId = connectionId,
+                            database = database,
+                            collection = collection,
+                            payloadJson = DocumentImportCodecs.toJsonArrayPayload(chunk),
+                            dropBeforeImport = dropBefore && index == 0,
+                            chunkIndex = index,
+                            chunkCount = chunks.size,
+                        )
+                    }
+                    chunks.size to ctx.stagingStore.list()
+                } ?: throw error
+                val (chunkCount, items) = queued
                 state.update {
                     it.copy(
                         pendingDestructive = null,
                         destructiveConfirmInput = "",
-                        stagingItems = ctx.stagingStore.list(),
-                        status = "导入失败，已分片入队（" + chunks.size + " 片），可稍后同步",
+                        stagingItems = items,
+                        status = "导入失败，已分片入队（" + chunkCount + " 片），可稍后同步",
                         error = SecretSanitizer.sanitize(error.message ?: "导入失败"),
                     )
                 }
@@ -372,11 +398,21 @@ class AdvancedController(
             state.update { it.copy(error = "请先选择数据库和集合。") }
             return
         }
-        val limit = state.value.exportLimit.toIntOrNull() ?: 200
+        val limit = resolvedExportLimit()
         ctx.actions.run("导出集合") {
             val json = repository.exportDocuments(database, collection, "{}", limit)
-            state.update { it.copy(exportJson = json, status = "导出完成") }
+            state.update { it.copy(exportJson = json, status = "导出完成（limit=" + limit + "）") }
         }
+    }
+
+    /**
+     * Effective export limit: non-numeric input falls back to [DEFAULT_EXPORT_LIMIT] and
+     * out-of-range values clamp to [MIN_EXPORT_LIMIT]..[MAX_EXPORT_LIMIT], matching the
+     * clamp the repository applies. The panel validates against the same bounds.
+     */
+    private fun resolvedExportLimit(): Int {
+        val raw = state.value.exportLimit.trim().toIntOrNull() ?: DEFAULT_EXPORT_LIMIT
+        return raw.coerceIn(MIN_EXPORT_LIMIT, MAX_EXPORT_LIMIT)
     }
 
     fun onCleared() {
@@ -405,17 +441,22 @@ class AdvancedController(
             state.update { it.copy(error = "请先选择数据库和集合。") }
             return
         }
-        val limit = state.value.exportLimit.toIntOrNull() ?: 200
+        val limit = resolvedExportLimit()
         val format = state.value.exportFormat
         ctx.actions.run("导出集合文件") {
             val json = repository.exportDocuments(database, collection, "{}", limit)
-            // exportDocuments returns pretty JSON array string; re-encode to requested format when needed
-            val docs = DocumentImportCodecs.parseJsonArrayToDocStrings(json)
-            val content = DocumentExportCodecs.encode(docs, format)
+            // exportDocuments returns pretty JSON array string; re-encode to requested format when
+            // needed. Both codec passes are CPU bound over possibly large payloads, so keep them
+            // off the main thread.
+            val encoded = withContext(Dispatchers.Default) {
+                val docs = DocumentImportCodecs.parseJsonArrayToDocStrings(json)
+                docs.size to DocumentExportCodecs.encode(docs, format)
+            }
+            val (docCount, content) = encoded
             state.update {
                 it.copy(
                     exportJson = content,
-                    status = "导出完成（" + format.name + "，" + docs.size + " 条）",
+                    status = "导出完成（" + format.name + "，" + docCount + " 条，limit=" + limit + "）",
                 )
             }
         }
@@ -423,48 +464,65 @@ class AdvancedController(
 
     fun prepareImportFromText(fileName: String, text: String) {
         ctx.actions.run("解析导入文件") {
-            val lower = fileName.lowercase()
-            val docs = if (lower.endsWith(".csv")) {
-                val table = DocumentImportCodecs.parseCsv(text)
-                val mapping = FieldMapping.identity(table.headers)
-                DocumentImportCodecs.applyCsvMapping(table, mapping)
-            } else {
-                DocumentImportCodecs.parseJsonArrayToDocStrings(text)
+            // Whole-file parsing is CPU bound and can span megabytes; never on the main thread.
+            val parsed = withContext(Dispatchers.Default) {
+                if (fileName.lowercase().endsWith(".csv")) {
+                    // Parse the table once and reuse it for both headers and documents.
+                    val table = DocumentImportCodecs.parseCsv(text)
+                    val docs = DocumentImportCodecs.applyCsvMapping(table, FieldMapping.identity(table.headers))
+                    ParsedImport(
+                        docCount = docs.size,
+                        preview = table.headers,
+                        payload = DocumentImportCodecs.toJsonArrayPayload(docs),
+                    )
+                } else {
+                    val docs = DocumentImportCodecs.parseJsonArrayToDocStrings(text)
+                    ParsedImport(
+                        docCount = docs.size,
+                        preview = DocumentImportCodecs.previewJsonFields(text),
+                        payload = DocumentImportCodecs.toJsonArrayPayload(docs),
+                    )
+                }
             }
-            val preview = if (lower.endsWith(".csv")) {
-                DocumentImportCodecs.parseCsv(text).headers
-            } else {
-                DocumentImportCodecs.previewJsonFields(text)
-            }
-            val payload = DocumentImportCodecs.toJsonArrayPayload(docs)
             state.update {
                 it.copy(
                     importSourceName = fileName,
-                    importMappingPreview = preview,
-                    importJson = payload,
-                    status = "已载入 " + fileName + "，" + docs.size + " 条待导入",
+                    importMappingPreview = parsed.preview,
+                    importJson = parsed.payload,
+                    status = "已载入 " + fileName + "，" + parsed.docCount + " 条待导入",
                 )
             }
         }
     }
+
+    private data class ParsedImport(
+        val docCount: Int,
+        val preview: List<String>,
+        val payload: String,
+    )
 
     fun confirmMappedImport() {
         requestImport()
     }
 
     fun refreshStagingQueue() {
-        state.update {
-            it.copy(
-                stagingItems = ctx.stagingStore.list(),
-                status = "待提交队列已刷新",
-            )
+        // Queue listing reads the index plus every payload file; go through the action runner
+        // so the file IO stays off the main thread.
+        ctx.actions.run("刷新待提交队列", silent = true) {
+            loadStagingItems("待提交队列已刷新")
         }
     }
 
+    private suspend fun loadStagingItems(status: String) {
+        val items = withContext(Dispatchers.IO) { ctx.stagingStore.list() }
+        state.update { it.copy(stagingItems = items, status = status) }
+    }
+
     fun discardStagingItem(id: String) {
-        ctx.stagingStore.delete(id)
-        refreshStagingQueue()
-        state.update { it.copy(status = "已丢弃队列项") }
+        ctx.actions.run("丢弃队列项", silent = true) {
+            withContext(Dispatchers.IO) { ctx.stagingStore.delete(id) }
+            loadStagingItems("已丢弃队列项")
+        }
     }
 
     fun retryStagingItem(id: String) {
@@ -477,17 +535,22 @@ class AdvancedController(
             return
         }
         ctx.actions.run("同步待提交队列") {
-            val items = if (onlyId != null) {
-                listOfNotNull(ctx.stagingStore.get(onlyId))
-            } else {
-                ctx.stagingStore.peekReady()
+            // Every stagingStore call touches index.json plus a payload file.
+            val items = withContext(Dispatchers.IO) {
+                if (onlyId != null) {
+                    listOfNotNull(ctx.stagingStore.get(onlyId))
+                } else {
+                    ctx.stagingStore.peekReady()
+                }
             }
             var success = 0
             var failed = 0
             items.forEach { item ->
                 try {
-                    ctx.stagingStore.markInFlight(item.id)
-                    val full = ctx.stagingStore.get(item.id) ?: item
+                    val full = withContext(Dispatchers.IO) {
+                        ctx.stagingStore.markInFlight(item.id)
+                        ctx.stagingStore.get(item.id)
+                    } ?: item
                     when (full.type) {
                         StagingOpType.INSERT -> {
                             repository.insertDocuments(full.database, full.collection, full.payloadJson)
@@ -506,22 +569,30 @@ class AdvancedController(
                             )
                         }
                     }
-                    ctx.stagingStore.markSuccess(full.id)
+                    withContext(Dispatchers.IO) { ctx.stagingStore.markSuccess(full.id) }
                     success++
                 } catch (error: Throwable) {
                     val message = SecretSanitizer.sanitize(
                         error.message?.takeIf { it.isNotBlank() } ?: "同步失败"
                     )
-                    ctx.stagingStore.markFailed(item.id, message)
+                    withContext(Dispatchers.IO) { ctx.stagingStore.markFailed(item.id, message) }
                     failed++
                 }
             }
+            val refreshed = withContext(Dispatchers.IO) { ctx.stagingStore.list() }
             state.update {
                 it.copy(
-                    stagingItems = ctx.stagingStore.list(),
+                    stagingItems = refreshed,
                     status = "队列同步完成：成功 " + success + "，失败 " + failed,
                 )
             }
         }
+    }
+
+    companion object {
+        /** Export limit bounds; the panel validates against the same range. */
+        const val MIN_EXPORT_LIMIT = 1
+        const val MAX_EXPORT_LIMIT = 1_000
+        const val DEFAULT_EXPORT_LIMIT = 200
     }
 }

@@ -1014,6 +1014,39 @@ internal fun topLevelFields(documents: List<String>, maxDocs: Int = 20): List<St
     return ordered
 }
 
+/** Entries composed per page for long panel lists; grows on demand via 加载更多. */
+internal const val LIST_DISPLAY_PAGE_SIZE = 50
+
+/** Table columns rendered at once, so wide documents cannot explode the cell count. */
+private const val TABLE_DISPLAY_MAX_FIELDS = 12
+
+/**
+ * Shows a "显示 N / 共 M 条" hint and an optional 加载更多 button.
+ *
+ * Panels live inside [PanelColumn]'s verticalScroll, where a LazyColumn cannot be
+ * nested (it would be measured with infinite maximum height). Long lists are therefore
+ * capped by composing only the first page and growing the cap on demand.
+ */
+@Composable
+internal fun ListDisplayLimitNotice(
+    shown: Int,
+    total: Int,
+    enabled: Boolean = true,
+    onLoadMore: (() -> Unit)? = null,
+) {
+    if (shown >= total) return
+    Text(
+        text = "显示 " + shown + " / 共 " + total + " 条",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (onLoadMore != null) {
+        OutlinedButton(onClick = onLoadMore, enabled = enabled) {
+            Text("加载更多（剩余 " + (total - shown) + "）")
+        }
+    }
+}
+
 @Composable
 internal fun DocumentResultList(
     documents: List<String>,
@@ -1027,77 +1060,131 @@ internal fun DocumentResultList(
         Text("暂无结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
+    // A query can return up to 500 documents; composing them all in one pass builds 500
+    // cards (or 500 x fields table cells) and stalls the frame. Only the first page is
+    // composed, and the remember key resets the cap when the result set or mode changes.
+    var visibleCount by remember(documents, mode) { mutableStateOf(LIST_DISPLAY_PAGE_SIZE) }
+    val shown = visibleCount.coerceAtMost(documents.size)
+    val visibleDocuments = remember(documents, shown) { documents.take(shown) }
     when (mode) {
         ResultViewMode.Json -> {
-            documents.forEachIndexed { index, doc ->
-                DocumentSnippet(
-                    title = titlePrefix + " #" + (startIndex + index),
-                    json = doc,
-                    selected = doc == selectedJson,
-                    onClick = { onSelect(doc) },
-                )
-            }
+            DocumentSnippetColumn(
+                documents = visibleDocuments,
+                selectedJson = selectedJson,
+                titlePrefix = titlePrefix,
+                startIndex = startIndex,
+                onSelect = onSelect,
+            )
         }
         ResultViewMode.Table -> {
-            val fields = topLevelFields(documents)
+            // topLevelFields parses up to 20 documents; cache it so selection changes and
+            // 加载更多 do not re-parse the JSON on every recomposition.
+            val fields = remember(documents) { topLevelFields(documents) }
             if (fields.isEmpty()) {
                 Text("无法从表结果提取字段，已回退 JSON。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                documents.forEachIndexed { index, doc ->
-                    DocumentSnippet(
-                        title = titlePrefix + " #" + (startIndex + index),
-                        json = doc,
-                        selected = doc == selectedJson,
-                        onClick = { onSelect(doc) },
-                    )
-                }
+                DocumentSnippetColumn(
+                    documents = visibleDocuments,
+                    selectedJson = selectedJson,
+                    titlePrefix = titlePrefix,
+                    startIndex = startIndex,
+                    onSelect = onSelect,
+                )
             } else {
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            fields.forEach { field ->
-                                Text(
-                                    text = field,
-                                    modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                        documents.forEach { raw ->
-                            val obj = runCatching { JSONObject(raw) }.getOrNull()
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.clickable { onSelect(raw) },
-                            ) {
-                                fields.forEach { field ->
-                                    val value = obj?.opt(field)?.toString() ?: ""
-                                    Text(
-                                        text = value,
-                                        modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = if (raw == selectedJson) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                DocumentResultTable(
+                    documents = visibleDocuments,
+                    fields = fields,
+                    selectedJson = selectedJson,
+                    onSelect = onSelect,
+                )
             }
         }
         ResultViewMode.Cards -> {
             DocumentCardStream(
-                documents = documents,
+                documents = visibleDocuments,
                 selectedJson = selectedJson,
                 titlePrefix = titlePrefix,
                 startIndex = startIndex,
                 onClick = { _, json -> onSelect(json) },
             )
         }
+    }
+    ListDisplayLimitNotice(
+        shown = shown,
+        total = documents.size,
+        onLoadMore = { visibleCount = shown + LIST_DISPLAY_PAGE_SIZE },
+    )
+}
+
+@Composable
+private fun DocumentSnippetColumn(
+    documents: List<String>,
+    selectedJson: String,
+    titlePrefix: String,
+    startIndex: Int,
+    onSelect: (String) -> Unit,
+) {
+    documents.forEachIndexed { index, doc ->
+        DocumentSnippet(
+            title = titlePrefix + " #" + (startIndex + index),
+            json = doc,
+            selected = doc == selectedJson,
+            onClick = { onSelect(doc) },
+        )
+    }
+}
+
+@Composable
+private fun DocumentResultTable(
+    documents: List<String>,
+    fields: List<String>,
+    selectedJson: String,
+    onSelect: (String) -> Unit,
+) {
+    val visibleFields = remember(fields) { fields.take(TABLE_DISPLAY_MAX_FIELDS) }
+    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                visibleFields.forEach { field ->
+                    Text(
+                        text = field,
+                        modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            documents.forEach { raw ->
+                // Cache the parse per row: without it every recomposition re-parses the
+                // whole visible page just to read a handful of cell values.
+                val obj = remember(raw) { runCatching { JSONObject(raw) }.getOrNull() }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.clickable { onSelect(raw) },
+                ) {
+                    visibleFields.forEach { field ->
+                        val value = obj?.opt(field)?.toString() ?: ""
+                        Text(
+                            text = value,
+                            modifier = Modifier.widthIn(min = 96.dp, max = 160.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (raw == selectedJson) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (visibleFields.size < fields.size) {
+        Text(
+            text = "字段已截断：显示 " + visibleFields.size + " / 共 " + fields.size + " 列，需要完整文档请切换 JSON 视图。",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

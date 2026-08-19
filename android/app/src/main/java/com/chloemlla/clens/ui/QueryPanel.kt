@@ -295,7 +295,9 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.queryFavorites.isEmpty()) {
             InfoCard(title = "暂无收藏", lines = listOf("填写名称后可保存当前查询条件。"))
         } else {
-            state.queryFavorites.forEach { item ->
+            var favoritesVisible by remember(state.queryFavorites) { mutableStateOf(LIST_DISPLAY_PAGE_SIZE) }
+            val favoritesShown = favoritesVisible.coerceAtMost(state.queryFavorites.size)
+            state.queryFavorites.take(favoritesShown).forEach { item ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -311,6 +313,12 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
                     ) { Text("删除") }
                 }
             }
+            ListDisplayLimitNotice(
+                shown = favoritesShown,
+                total = state.queryFavorites.size,
+                enabled = !state.loading,
+                onLoadMore = { favoritesVisible = favoritesShown + LIST_DISPLAY_PAGE_SIZE },
+            )
         }
 
         SectionTitle(text = "查询历史", subtitle = "最近 20 条本地保存，点按即可恢复。")
@@ -318,13 +326,15 @@ internal fun QueryPanel(state: ClensUiState, viewModel: ClensViewModel) {
         if (state.queryHistory.isEmpty()) {
             InfoCard(title = "暂无历史", lines = listOf("执行 find/aggregate 后会自动记录。"))
         } else {
-            state.queryHistory.take(20).forEach { item ->
+            val historyShown = state.queryHistory.size.coerceAtMost(HISTORY_DISPLAY_LIMIT)
+            state.queryHistory.take(historyShown).forEach { item ->
                 OutlinedButton(
                     onClick = { viewModel.restoreQueryHistory(item.id) },
                     enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(item.title) }
             }
+            ListDisplayLimitNotice(shown = historyShown, total = state.queryHistory.size)
         }
 
         ResultViewModeToggle(
@@ -349,6 +359,29 @@ private data class SqlExample(
     val sql: String,
 )
 
+/** History rows rendered at once; the rest are reported by the truncation notice. */
+private const val HISTORY_DISPLAY_LIMIT = 20
+
+// Hoisted out of the composable: this list was rebuilt on every recomposition.
+private val SQL_EXAMPLES = listOf(
+    SqlExample(
+        label = "基础比较",
+        sql = "SELECT * FROM users WHERE age > 18",
+    ),
+    SqlExample(
+        label = "投影排序",
+        sql = "SELECT name, age FROM users WHERE status = 'active' ORDER BY age DESC LIMIT 20",
+    ),
+    SqlExample(
+        label = "IN + LIKE",
+        sql = "SELECT * FROM logs WHERE tag IN ('a', 'b') AND name LIKE 'cli%'",
+    ),
+    SqlExample(
+        label = "空值判断",
+        sql = "SELECT _id, owner FROM docs WHERE deletedAt IS NULL AND owner IS NOT NULL",
+    ),
+)
+
 @Composable
 private fun SqlUsageGuide(
     expanded: Boolean,
@@ -356,24 +389,7 @@ private fun SqlUsageGuide(
     onExpandedChange: (Boolean) -> Unit,
     onApplyExample: (String) -> Unit,
 ) {
-    val examples = listOf(
-        SqlExample(
-            label = "基础比较",
-            sql = "SELECT * FROM users WHERE age > 18",
-        ),
-        SqlExample(
-            label = "投影排序",
-            sql = "SELECT name, age FROM users WHERE status = 'active' ORDER BY age DESC LIMIT 20",
-        ),
-        SqlExample(
-            label = "IN + LIKE",
-            sql = "SELECT * FROM logs WHERE tag IN ('a', 'b') AND name LIKE 'cli%'",
-        ),
-        SqlExample(
-            label = "空值判断",
-            sql = "SELECT _id, owner FROM docs WHERE deletedAt IS NULL AND owner IS NOT NULL",
-        ),
-    )
+    val examples = SQL_EXAMPLES
 
     InfoCard(
         title = "SQL 使用教程",

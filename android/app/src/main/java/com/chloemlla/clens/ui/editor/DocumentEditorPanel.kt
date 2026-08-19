@@ -109,6 +109,7 @@ internal fun DocumentEditorPanel(
     var menuPath by remember { mutableStateOf<String?>(null) }
     var fullScreenPath by remember { mutableStateOf<String?>(null) }
     var showSearch by remember { mutableStateOf(false) }
+    var confirmBlankDocument by remember { mutableStateOf(false) }
     // TextFieldValue is the single source of truth for the search box. Deriving it from
     // a separate query string via remember(query) rebuilt the value on every keystroke,
     // which reset the selection to 0 and reversed typed input.
@@ -281,7 +282,13 @@ internal fun DocumentEditorPanel(
                 enabled = enabled,
                 label = { Text("Raw") },
             )
-            TextButton(onClick = onStartBlankDocument, enabled = editable) {
+            TextButton(
+                onClick = {
+                    // Replacing a dirty document discards unsaved edits, so ask first.
+                    if (editor.dirty) confirmBlankDocument = true else onStartBlankDocument()
+                },
+                enabled = editable,
+            ) {
                 Text("新建空白")
             }
             TextButton(onClick = onEnsureObjectId, enabled = editable) {
@@ -360,6 +367,25 @@ internal fun DocumentEditorPanel(
                 },
             )
         }
+    }
+
+    if (confirmBlankDocument) {
+        AlertDialog(
+            onDismissRequest = { confirmBlankDocument = false },
+            title = { Text("放弃未保存的修改？") },
+            text = { Text("当前文档有未保存的编辑，新建空白文档会丢弃这些修改。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmBlankDocument = false
+                        onStartBlankDocument()
+                    },
+                ) { Text("新建空白") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBlankDocument = false }) { Text("取消") }
+            },
+        )
     }
 
     fullScreenPath?.let { pathKey ->
