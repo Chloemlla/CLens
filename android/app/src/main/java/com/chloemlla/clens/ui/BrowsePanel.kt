@@ -208,7 +208,10 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 searchPlaceholder = "搜索数据库",
                 onSearchQueryChange = { viewModel.updateText(ClensViewModel.Field.DatabaseSearch, it) },
                 onSelect = viewModel::updateSelectedDatabase,
-                loading = state.loading,
+                // Skeletons stand in for a list that has nothing to show yet. state.loading
+                // is a single global action flag, so gating on it alone would blank an
+                // already-loaded list during unrelated actions (insert, export, drop).
+                loading = state.loading && state.databases.isEmpty(),
             )
 
             when {
@@ -276,7 +279,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 searchPlaceholder = "搜索集合",
                 onSearchQueryChange = { viewModel.updateText(ClensViewModel.Field.CollectionSearch, it) },
                 onSelect = viewModel::updateSelectedCollection,
-                loading = state.loading,
+                loading = state.loading && state.selectedDatabase.isNotBlank() && state.collections.isEmpty(),
             )
 
             if (state.connectedReadOnly) {

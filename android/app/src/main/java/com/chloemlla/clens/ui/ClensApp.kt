@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
@@ -104,188 +102,149 @@ fun ClensApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    // BoxWithConstraints is the root so the breakpoint is known before the Scaffold
+    // is configured: a single Scaffold then owns either a top app bar (wider screens)
+    // or a bottom navigation bar (narrow screens). Nesting two Scaffolds here would
+    // render two app bars and double-count the inset padding.
+    BoxWithConstraints {
+        val width = maxWidth
+        val isNarrow = width < 480.dp
+        val isMedium = width < 640.dp
+
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                if (!isNarrow) {
+                    CenterAlignedTopAppBar(
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Storage,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Column {
+                                    Text(text = "CLens", fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = if (state.isConnected) {
+                                            (state.connectedProfile?.name ?: "已连接") +
+                                                if (state.connectedReadOnly) " · 只读" else ""
+                                        } else {
+                                            "MongoDB 管理客户端"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    )
+                } else {
+                    // Narrow screens carry identity in the bottom bar instead.
+                    Unit
+                }
+            },
+            bottomBar = if (isNarrow) {
+                @Composable {
+                    // All six tabs stay reachable on narrow screens. An overflow "more"
+                    // item would need a sheet to host the hidden tabs, and without one
+                    // those tabs become unreachable — so every tab gets its own item.
+                    // Labels are two characters each, which fits.
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.imePadding(),
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Storage,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Column {
-                            Text(text = "CLens", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = if (state.isConnected) {
-                                    (state.connectedProfile?.name ?: "已连接") +
-                                        if (state.connectedReadOnly) " · 只读" else ""
-                                } else {
-                                    "MongoDB 管理客户端"
+                        ClensTab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
+                                label = {
+                                    Text(
+                                        text = tab.label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    )
                                 },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                selected = state.selectedTab == tab,
+                                onClick = { viewModel.selectTab(tab) },
                             )
                         }
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
-    ) { padding ->
-        BoxWithConstraints {
-            val width = maxWidth
-            val isNarrow = width < 480.dp
-            val isMedium = width < 640.dp
-
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    if (!isNarrow) {
-                        CenterAlignedTopAppBar(
-                            title = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Storage,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Column {
-                                        Text(text = "CLens", fontWeight = FontWeight.SemiBold)
-                                        Text(
-                                            text = if (state.isConnected) {
-                                                (state.connectedProfile?.name ?: "已连接") +
-                                                    if (state.connectedReadOnly) " · 只读" else ""
-                                            } else {
-                                                "MongoDB 管理客户端"
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            },
-                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                titleContentColor = MaterialTheme.colorScheme.onSurface,
-                            ),
-                        )
-                    } else {
-                        // Explicit Unit for type inference when isNarrow
-                        Unit
-                    }
-                },
-                bottomBar = if (isNarrow) {
-                    @Composable {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            modifier = Modifier.imePadding(),
-                        ) {
-                            val tabs = ClensTab.entries
-                            val mainTabs = tabs.take(4)
-                            val overflowTabs = tabs.drop(4)
-                            var showOverflow by remember { mutableStateOf(false) }
-                            mainTabs.forEach { tab ->
-                                NavigationBarItem(
-                                    icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
-                                    label = { Text(tab.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
-                                    selected = state.selectedTab == tab,
-                                    onClick = {
-                                        viewModel.selectTab(tab)
-                                        showOverflow = false
-                                    },
-                                )
-                            }
-                            if (overflowTabs.isNotEmpty()) {
-                                NavigationBarItem(
-                                    icon = { Icon(Icons.Outlined.MoreHoriz, contentDescription = "更多") },
-                                    label = { Text("更多", maxLines = 1, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)) },
-                                    selected = showOverflow,
-                                    onClick = { showOverflow = !showOverflow },
-                                )
-                            }
+                }
+            } else {
+                @Composable { Unit }
+            },
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(innerPadding),
+            ) {
+                if (!isNarrow) {
+                    // Medium widths drop the tab labels and keep icons only, so all six
+                    // tabs stay visible without horizontal scrolling; wider screens show
+                    // icon plus label. contentDescription carries the name either way.
+                    ScrollableTabRow(
+                        selectedTabIndex = state.selectedTab.ordinal,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        edgePadding = 8.dp,
+                    ) {
+                        ClensTab.entries.forEach { tab ->
+                            Tab(
+                                selected = state.selectedTab == tab,
+                                onClick = { viewModel.selectTab(tab) },
+                                icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
+                                text = if (isMedium) null else { { Text(tab.label) } },
+                            )
                         }
                     }
-                } else {
-                    @Composable { Unit }
-                },
-            ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(innerPadding),
-                ) {
-                    if (!isNarrow) {
-                        // Medium: icon-only tabs with tooltip on long press
-                        // Wide: icon + label
-                        ScrollableTabRow(
-                            selectedTabIndex = state.selectedTab.ordinal,
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            contentColor = MaterialTheme.colorScheme.primary,
-                            edgePadding = 8.dp,
-                        ) {
-                            ClensTab.entries.forEach { tab ->
-                                val showLabel = !isMedium
-                                Tab(
-                                    selected = state.selectedTab == tab,
-                                    onClick = { viewModel.selectTab(tab) },
-                                    icon = { Icon(imageVector = tab.icon(), contentDescription = tab.label) },
-                                    text = if (showLabel) { { Text(tab.label) } } else null,
-                                )
-                            }
-                        }
-                    }
+                }
 
-                    val cleartextWarning = state.cleartextWarning
-                    if (!cleartextWarning.isNullOrBlank()) {
-                        WarningBanner(
-                            text = cleartextWarning,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    }
-                    val disconnectNotice = state.disconnectNotice
-                    if (!disconnectNotice.isNullOrBlank() || state.reconnecting) {
-                        SessionHealthBanner(
-                            notice = disconnectNotice ?: "正在尝试恢复连接…",
-                            reconnecting = state.reconnecting,
-                            onReconnect = viewModel::reconnectManually,
-                            onDismiss = viewModel::dismissDisconnectNotice,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    }
-                    Box(
+                val cleartextWarning = state.cleartextWarning
+                if (!cleartextWarning.isNullOrBlank()) {
+                    WarningBanner(
+                        text = cleartextWarning,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .imePadding(),
-                    ) {
-                        when (state.selectedTab) {
-                            ClensTab.Connections -> ConnectionsPanel(state, viewModel)
-                            ClensTab.Browse -> BrowsePanel(state, viewModel)
-                            ClensTab.Query -> QueryPanel(state, viewModel)
-                            ClensTab.Admin -> AdminPanel(state, viewModel)
-                            ClensTab.Advanced -> AdvancedPanel(state, viewModel)
-                            ClensTab.Settings -> SettingsPanel(state, viewModel)
-                        }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                val disconnectNotice = state.disconnectNotice
+                if (!disconnectNotice.isNullOrBlank() || state.reconnecting) {
+                    SessionHealthBanner(
+                        notice = disconnectNotice ?: "正在尝试恢复连接…",
+                        reconnecting = state.reconnecting,
+                        onReconnect = viewModel::reconnectManually,
+                        onDismiss = viewModel::dismissDisconnectNotice,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .imePadding(),
+                ) {
+                    when (state.selectedTab) {
+                        ClensTab.Connections -> ConnectionsPanel(state, viewModel)
+                        ClensTab.Browse -> BrowsePanel(state, viewModel)
+                        ClensTab.Query -> QueryPanel(state, viewModel)
+                        ClensTab.Admin -> AdminPanel(state, viewModel)
+                        ClensTab.Advanced -> AdvancedPanel(state, viewModel)
+                        ClensTab.Settings -> SettingsPanel(state, viewModel)
                     }
                 }
             }

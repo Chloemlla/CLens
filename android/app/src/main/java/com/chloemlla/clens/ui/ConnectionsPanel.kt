@@ -65,16 +65,18 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
         }
         if (state.profiles.isEmpty()) {
+            // Single action: the editor already hosts clipboard/QR URI import, and
+            // startCreateConnection() resets the form, so a second "import" button here
+            // would land in exactly the same place.
             OnboardingCard(
                 title = "欢迎使用 CLens",
-                subtitle = "创建你的第一个 MongoDB 连接，开始管理数据库。",
+                subtitle = "创建第一个 MongoDB 连接，开始管理数据库。",
                 icon = Icons.Outlined.Cable,
                 primaryLabel = "新建连接",
                 onPrimaryClick = viewModel::startCreateConnection,
-                secondaryLabel = "从 URI 导入",
-                onSecondaryClick = { viewModel.updateConnectionForm { it.copy(useUri = true) }; viewModel.startCreateConnection() },
                 features = listOf(
                     "支持 mongodb:// / mongodb+srv:// URI 或主机端口表单",
+                    "编辑器内可从剪贴板或扫码直接导入连接 URI",
                     "凭据仅写入 EncryptedSharedPreferences，安全存储不可用则拒绝保存",
                     "局域网可关闭 TLS；生产环境建议开启 TLS + 证书验证",
                 ),

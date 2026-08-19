@@ -6,8 +6,10 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.chloemlla.clens.core.export.OutgoingShareSpec
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -44,19 +46,12 @@ import androidx.compose.material.icons.outlined.Cable
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Tab
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -81,7 +76,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -600,12 +594,14 @@ fun OnboardingCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                secondaryLabel?.let { label ->
+                // Both halves must be present; a label without a handler would be a
+                // dead button, so render the secondary action only when it is complete.
+                if (secondaryLabel != null && onSecondaryClick != null) {
                     OutlinedButton(
-                        onClick = onSecondaryClick!!,
+                        onClick = onSecondaryClick,
                         modifier = Modifier.padding(end = 8.dp),
                     ) {
-                        Text(label)
+                        Text(secondaryLabel)
                     }
                 }
                 Button(onClick = onPrimaryClick) {
@@ -865,16 +861,31 @@ internal fun SearchableCatalogSelector(
     }
 }
 
+/**
+ * Pulsing alpha for skeleton placeholders.
+ *
+ * Uses [rememberInfiniteTransition] rather than `animateFloatAsState`: the latter
+ * settles at its target on first composition, so a constant target never animates
+ * and the placeholder would render at a fixed alpha.
+ */
 @Composable
-private fun SkeletonCatalogItem() {
-    val shimmerAlpha by animateFloatAsState(
+private fun rememberShimmerAlpha(): Float {
+    val transition = rememberInfiniteTransition(label = "skeletonShimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, delayMillis = 0, easing = LinearEasing),
+            animation = tween(durationMillis = 900, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "skeletonShimmer",
+        label = "skeletonShimmerAlpha",
     )
+    return alpha
+}
+
+@Composable
+private fun SkeletonCatalogItem() {
+    val shimmerAlpha = rememberShimmerAlpha()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
@@ -914,14 +925,7 @@ private fun SkeletonCatalogItem() {
 
 @Composable
 private fun SkeletonCatalogChip() {
-    val shimmerAlpha by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, delayMillis = 0, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "skeletonShimmer",
-    )
+    val shimmerAlpha = rememberShimmerAlpha()
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f * shimmerAlpha),
@@ -1118,11 +1122,8 @@ fun ExpandableSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
                     .clickable { expanded = !expanded }
-                    .pointerInput(Unit) {
-                        // No additional pointer handling needed
-                    },
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
