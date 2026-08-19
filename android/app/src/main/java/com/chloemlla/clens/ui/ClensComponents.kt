@@ -7,6 +7,10 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import com.chloemlla.clens.core.export.OutgoingShareSpec
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,9 +40,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cable
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TravelExplore
@@ -505,6 +512,100 @@ internal fun InfoCard(title: String, lines: List<String>, icon: ImageVector = Ic
 }
 
 @Composable
+fun OnboardingCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    primaryLabel: String,
+    onPrimaryClick: () -> Unit,
+    secondaryLabel: String? = null,
+    onSecondaryClick: (() -> Unit)? = null,
+    features: List<String> = emptyList(),
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    )
+                }
+            }
+            if (features.isNotEmpty()) {
+                Column(modifier = Modifier.padding(start = 72.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    features.forEach { feature ->
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp).padding(top = 2.dp),
+                            )
+                            Text(
+                                text = feature,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                secondaryLabel?.let { label ->
+                    OutlinedButton(
+                        onClick = onSecondaryClick!!,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
+                        Text(label)
+                    }
+                }
+                Button(onClick = onPrimaryClick) {
+                    Text(primaryLabel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun JsonField(
     label: String,
     value: String,
@@ -576,6 +677,7 @@ internal fun SearchableCatalogSelector(
     searchPlaceholder: String = "搜索",
     onSearchQueryChange: (String) -> Unit,
     onSelect: (String) -> Unit,
+    loading: Boolean = false,
 ) {
     val query = searchQuery.trim()
     val filtered = if (query.isBlank()) {
@@ -595,7 +697,7 @@ internal fun SearchableCatalogSelector(
             onValueChange = onSearchQueryChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            enabled = enabled,
+            enabled = enabled && !loading,
             label = { Text(searchPlaceholder) },
             leadingIcon = {
                 Icon(
@@ -605,18 +707,60 @@ internal fun SearchableCatalogSelector(
             },
             trailingIcon = {
                 if (searchQuery.isNotBlank()) {
-                    IconButton(onClick = { onSearchQueryChange("") }, enabled = enabled) {
+                    IconButton(onClick = { onSearchQueryChange("") }, enabled = enabled && !loading) {
                         Icon(Icons.Outlined.Close, contentDescription = "清除搜索")
                     }
                 }
             },
         )
-        Text(
-            text = "显示 " + filtered.size + " / " + options.size,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (loading) {
+            Text(
+                text = "加载中…",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                text = "显示 " + filtered.size + " / " + options.size,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         when {
+            loading -> {
+                // Skeleton shimmer placeholders
+                val skeletonCount = if (vertical) 6 else 4
+                if (vertical) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            repeat(skeletonCount) {
+                                SkeletonCatalogItem()
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        repeat(skeletonCount) {
+                            SkeletonCatalogChip()
+                        }
+                    }
+                }
+            }
             options.isEmpty() -> {
                 Text(emptyText, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -706,6 +850,82 @@ internal fun SearchableCatalogSelector(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonCatalogItem() {
+    val shimmerAlpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, delayMillis = 0, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeletonShimmer",
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f * shimmerAlpha),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f * shimmerAlpha)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f * shimmerAlpha)),
+                )
+                Box(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .height(12.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.3f * shimmerAlpha)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonCatalogChip() {
+    val shimmerAlpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, delayMillis = 0, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeletonShimmer",
+    )
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f * shimmerAlpha),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(20.dp)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f * shimmerAlpha)),
+            )
         }
     }
 }
@@ -862,6 +1082,79 @@ internal fun DocumentResultList(
                 startIndex = startIndex,
                 onClick = { _, json -> onSelect(json) },
             )
+        }
+    }
+}
+
+@Composable
+fun ExpandableSection(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    initiallyExpanded: Boolean = true,
+    key: String? = null,
+    content: @Composable () -> Unit,
+) {
+    var expanded by remember(key ?: title) { mutableStateOf(initiallyExpanded) }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            // Header row - clickable to toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .clickable { expanded = !expanded }
+                    .pointerInput(Unit) {
+                        // No additional pointer handling needed
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (icon != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    if (subtitle != null) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = if (expanded) "折叠" else "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            // Content with animated height
+            if (expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, bottom = 12.dp),
+                ) {
+                    content()
+                }
+            }
         }
     }
 }

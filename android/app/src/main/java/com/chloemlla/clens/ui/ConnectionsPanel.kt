@@ -65,12 +65,18 @@ internal fun ConnectionsPanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
         }
         if (state.profiles.isEmpty()) {
-            InfoCard(
-                title = "还没有连接",
-                lines = listOf(
-                    "支持 mongodb:// / mongodb+srv:// URI，或主机端口表单。",
-                    "凭据仅在安全存储可用时写入 EncryptedSharedPreferences；安全存储失败会直接拒绝保存。",
-                    "局域网实例可关闭 TLS；生产环境建议开启 TLS。",
+            OnboardingCard(
+                title = "欢迎使用 CLens",
+                subtitle = "创建你的第一个 MongoDB 连接，开始管理数据库。",
+                icon = Icons.Outlined.Cable,
+                primaryLabel = "新建连接",
+                onPrimaryClick = viewModel::startCreateConnection,
+                secondaryLabel = "从 URI 导入",
+                onSecondaryClick = { viewModel.updateConnectionForm { it.copy(useUri = true) }; viewModel.startCreateConnection() },
+                features = listOf(
+                    "支持 mongodb:// / mongodb+srv:// URI 或主机端口表单",
+                    "凭据仅写入 EncryptedSharedPreferences，安全存储不可用则拒绝保存",
+                    "局域网可关闭 TLS；生产环境建议开启 TLS + 证书验证",
                 ),
             )
         }
