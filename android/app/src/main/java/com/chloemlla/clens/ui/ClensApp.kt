@@ -184,6 +184,9 @@ fun ClensApp(
                                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                             ),
                         )
+                    } else {
+                        // Explicit Unit for type inference when isNarrow
+                        Unit
                     }
                 },
                 bottomBar = if (isNarrow) {
