@@ -114,6 +114,7 @@ fun ClensApp(
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
+                // Narrow screens carry identity in the bottom bar instead.
                 if (!isNarrow) {
                     CenterAlignedTopAppBar(
                         title = {
@@ -148,10 +149,8 @@ fun ClensApp(
                             titleContentColor = MaterialTheme.colorScheme.onSurface,
                         ),
                     )
-                } else {
-                    // Narrow screens carry identity in the bottom bar instead.
-                    Unit
                 }
+                // Narrow screens carry identity in the bottom bar instead.
             },
             bottomBar = if (isNarrow) {
                 @Composable {
@@ -181,7 +180,7 @@ fun ClensApp(
                     }
                 }
             } else {
-                @Composable { Unit }
+                @Composable {}
             },
         ) { innerPadding ->
             Column(

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.SelectAll
@@ -215,7 +215,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             )
 
             when {
-                state.databaseStatsError != null -> InfoCard(title = "数据库统计不可用", lines = listOf(state.databaseStatsError ?: ""))
+                state.databaseStatsError != null -> InfoCard(title = "数据库统计不可用", lines = listOf(state.databaseStatsError))
                 state.databaseStatsJson.isNotBlank() -> JsonField("dbStats", state.databaseStatsJson, enabled = false, minLines = 6) {}
             }
         }
@@ -290,7 +290,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
             }
 
             when {
-                state.collectionStatsError != null -> InfoCard(title = "集合统计不可用", lines = listOf(state.collectionStatsError ?: ""))
+                state.collectionStatsError != null -> InfoCard(title = "集合统计不可用", lines = listOf(state.collectionStatsError))
                 state.selectedCollectionStats != null -> {
                     val stats = checkNotNull(state.selectedCollectionStats)
                     CollectionStatsQuickPanel(stats = stats)
@@ -335,7 +335,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
                 ) { Text("应用 validator") }
             }
             when {
-                state.collectionValidatorError != null -> InfoCard(title = "Validator 不可用", lines = listOf(state.collectionValidatorError ?: ""))
+                state.collectionValidatorError != null -> InfoCard(title = "Validator 不可用", lines = listOf(state.collectionValidatorError))
                 else -> {
                     JsonField("validator JSON", state.validatorJsonInput, writeEnabled, minLines = 4) {
                         viewModel.updateText(ClensViewModel.Field.ValidatorJsonInput, it)
@@ -363,7 +363,7 @@ internal fun BrowsePanel(state: ClensUiState, viewModel: ClensViewModel) {
         ExpandableSection(
             title = "查询条件",
             subtitle = "Filter / Sort / Projection / Limit。",
-            icon = Icons.Outlined.ManageSearch,
+            icon = Icons.AutoMirrored.Outlined.ManageSearch,
             key = "query_conditions",
         ) {
             JsonField("Filter", state.browseFilterJson, !state.loading) {

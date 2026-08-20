@@ -300,7 +300,7 @@ object DocNodeCodec {
         if (raw.isNullOrBlank()) return null
         return runCatching {
             val obj = JSONObject(raw)
-            when (val binary = obj.opt("\$binary")) {
+            when (val binary = obj.opt("\$binary") ?: return@runCatching null) {
                 is JSONObject -> {
                     val base64 = binary.optString("base64")
                     val subType = normalizeSubType(binary.optString("subType", "00"))
@@ -419,9 +419,10 @@ object DocNodeCodec {
         }
         if (obj.has("\$date") && obj.length() == 1) {
             val dateValue = obj.opt("\$date")
-            val display = when (dateValue) {
-                is JSONObject -> dateValue.opt("\$numberLong")?.toString() ?: dateValue.toString()
-                else -> dateValue?.toString().orEmpty()
+            val display = if (dateValue is JSONObject) {
+                dateValue.opt("\$numberLong")?.toString() ?: dateValue.toString()
+            } else {
+                dateValue?.toString().orEmpty()
             }
             return DocNode(
                 path = path,
