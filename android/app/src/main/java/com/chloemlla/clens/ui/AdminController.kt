@@ -3,10 +3,12 @@ package com.chloemlla.clens.ui
 import com.chloemlla.clens.core.mongo.OpsCounterSampler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.update
 
 class AdminController(
@@ -149,6 +151,16 @@ class AdminController(
     }
 
     fun refreshOpsHistory(silent: Boolean = false) {
+        // Reading the archive parses up to MAX_POINTS_PER_CONNECTION entries, so it goes
+        // through the action runner (and Dispatchers.IO inside) rather than blocking the
+        // caller's thread. The sampling loop calls loadOpsHistory directly because it is
+        // already inside a coroutine and must not raise the global loading flag every tick.
+        ctx.actions.run("加载 Ops 历史", silent = true) {
+            loadOpsHistory(silent)
+        }
+    }
+
+    private suspend fun loadOpsHistory(silent: Boolean) {
         val connectionId = state.value.connectedProfileId
         if (connectionId.isNullOrBlank()) {
             state.update {
@@ -159,7 +171,9 @@ class AdminController(
             }
             return
         }
-        val history = runCatching { ctx.opsArchiveStore.load(connectionId) }.getOrNull()
+        val history = withContext(Dispatchers.IO) {
+            runCatching { ctx.opsArchiveStore.load(connectionId) }.getOrNull()
+        }
         state.update {
             it.copy(
                 opsCounterHistoryState = history,
@@ -189,7 +203,7 @@ class AdminController(
         val connectionId = state.value.pendingDestructive?.target.orEmpty()
         if (connectionId.isBlank()) return
         ctx.actions.run("清空 Ops 历史") {
-            ctx.opsArchiveStore.clear(connectionId)
+            withContext(Dispatchers.IO) { ctx.opsArchiveStore.clear(connectionId) }
             state.update {
                 it.copy(
                     pendingDestructive = null,
@@ -249,13 +263,20 @@ class AdminController(
                 } catch (error: Throwable) {
                     Result.failure(error)
                 }
-                snapshotResult.onSuccess { snapshot ->
+                // Handled with if/else rather than onSuccess/onFailure: those callbacks are
+                // not suspending, which would block the archive write from leaving the main
+                // dispatcher.
+                val snapshot = snapshotResult.getOrNull()
+                if (snapshot != null) {
                     val sample = sampler.onSnapshot(snapshot)
                     if (sample != null) {
                         val connectionId = state.value.connectedProfileId
                         val currentPoint = sample.current
                         if (!connectionId.isNullOrBlank() && currentPoint != null) {
-                            runCatching { ctx.opsArchiveStore.append(connectionId, currentPoint) }
+                            // One archive append per tick; file IO must not run on Main.
+                            withContext(Dispatchers.IO) {
+                                runCatching { ctx.opsArchiveStore.append(connectionId, currentPoint) }
+                            }
                         }
                         state.update {
                             it.copy(
@@ -265,7 +286,10 @@ class AdminController(
                             )
                         }
                         if (state.value.opsCounterHistoryMode) {
-                            refreshOpsHistory(silent = true)
+                            // Direct suspend call: going through refreshOpsHistory would
+                            // take the action mutex and flip the global loading flag on
+                            // every tick.
+                            loadOpsHistory(silent = true)
                         }
                     } else {
                         // Baseline only; preserve previous sample state if any.
@@ -273,10 +297,11 @@ class AdminController(
                             it.copy(opsCounterError = null, opsCounterSampling = true)
                         }
                     }
-                }.onFailure { error ->
+                } else {
+                    val error = snapshotResult.exceptionOrNull()
                     state.update {
                         it.copy(
-                            opsCounterError = error.message ?: "opcounters 采样失败",
+                            opsCounterError = error?.message ?: "opcounters 采样失败",
                             opsCounterSampling = true,
                         )
                     }
