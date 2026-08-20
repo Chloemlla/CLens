@@ -83,7 +83,7 @@ jobs:
           CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew testProductionDebugUnitTest --no-daemon
+        run: ./gradlew testProductionDebugUnitTest
 
       - name: Run Android lint
         env:
@@ -92,7 +92,7 @@ jobs:
           CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew lintProductionDebug --no-daemon
+        run: ./gradlew lintProductionDebug
 
       - name: Build release APK for verification
         env:
@@ -101,7 +101,7 @@ jobs:
           CLENS_SHORT_HASH: ${{ env.CLENS_SHORT_HASH }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew assembleProductionRelease --no-daemon
+        run: ./gradlew assembleProductionRelease
 
       - name: Verify Mongo SASL classes retained after R8
         working-directory: .
@@ -213,7 +213,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.LUMEN_CRASH_READ_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: ./gradlew assembleProductionRelease --no-daemon
+        run: ./gradlew assembleProductionRelease
 
       - name: Verify Mongo SASL classes retained after R8
         working-directory: .
