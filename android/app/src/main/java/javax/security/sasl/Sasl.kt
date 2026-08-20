@@ -31,7 +31,7 @@ object Sasl {
         authorizationId: String?,
         protocol: String?,
         serverName: String?,
-        props: java.util.Map<String, *>?,
+        props: Map<String, *>?,
         cbh: CallbackHandler?,
     ): SaslClient {
         throw SaslException(

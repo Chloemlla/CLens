@@ -40,7 +40,7 @@ class OpenJdkCompatTest {
     fun asListToArrayHasObjectComponentType() {
         // Call the Java Collection overload explicitly; Kotlin hides java.util.Collection#toArray().
         // Arrays.asList is a platform type; cast through Any to a typed Java Collection.
-        @Suppress("UNCHECKED_CAST")
+        @Suppress("UNCHECKED_CAST", "PLATFORM_CLASS_MAPPED_TO_KOTLIN")
         val list = Arrays.asList("one", "two") as JavaCollection<String?>
         val raw = list.toArray()
         assertEquals(Any::class.java, raw::class.java.componentType)
@@ -56,7 +56,7 @@ class OpenJdkCompatTest {
 
     @Test
     fun typedToArrayKeepsStringComponentType() {
-        @Suppress("UNCHECKED_CAST")
+        @Suppress("UNCHECKED_CAST", "PLATFORM_CLASS_MAPPED_TO_KOTLIN")
         val list = Arrays.asList("two", "one") as JavaCollection<String?>
         val elements = list.toArray(arrayOfNulls<String>(0))
         assertEquals(String::class.java, elements::class.java.componentType)

@@ -195,7 +195,7 @@ object MongoUriBuilder {
         return try {
             val cs = ConnectionString(trimmed)
             val hosts = cs.hosts
-            val hostPort = hosts?.firstOrNull()
+            val hostPort = hosts.firstOrNull()
             val host: String
             val port: Int?
             if (hostPort.isNullOrBlank()) {

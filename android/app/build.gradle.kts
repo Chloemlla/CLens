@@ -130,6 +130,18 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // These four prebuilt .so files come from AndroidX/ML Kit/CameraX AARs and are
+            // already shipped without strippable debug data, so AGP's strip step fails on them
+            // and packages them unchanged anyway. Declaring them here skips the doomed strip
+            // attempt instead of logging "Unable to strip the following libraries" every build.
+            keepDebugSymbols += setOf(
+                "**/libandroidx.graphics.path.so",
+                "**/libbarhopper_v3.so",
+                "**/libimage_processing_util_jni.so",
+                "**/libsurface_util_jni.so",
+            )
+        }
         resources {
             excludes += setOf(
                 "META-INF/DEPENDENCIES",

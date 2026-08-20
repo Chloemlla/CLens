@@ -178,13 +178,13 @@ internal fun AdminPanel(state: ClensUiState, viewModel: ClensViewModel) {
             JsonField("serverStatus JSON", overview.rawStatusJson, enabled = false, minLines = 8) {}
         }
         when {
-            state.usersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.usersError ?: ""))
+            state.usersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.usersError))
             state.users.isNotEmpty() -> InfoCard(title = "用户 (" + state.users.size + ")", lines = state.users)
             else -> InfoCard(title = "用户", lines = listOf("当前认证库没有可显示的用户，或结果为空。"))
         }
         when {
-            state.currentOpsListError != null -> InfoCard(title = "当前操作不可用", lines = listOf(state.currentOpsListError ?: ""))
-            state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError ?: ""))
+            state.currentOpsListError != null -> InfoCard(title = "当前操作不可用", lines = listOf(state.currentOpsListError))
+            state.currentOpsError != null -> InfoCard(title = "currentOp 不可用", lines = listOf(state.currentOpsError))
             state.currentOps.isNotEmpty() -> {
                 var opFilter by remember { mutableStateOf(CurrentOpFilter.All) }
                 var opQuery by remember { mutableStateOf("") }

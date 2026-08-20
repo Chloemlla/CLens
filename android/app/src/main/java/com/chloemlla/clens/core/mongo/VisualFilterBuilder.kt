@@ -50,31 +50,29 @@ object VisualFilterBuilder {
         val clauses = mutableListOf<VisualFilterClause>()
         root.keys().asSequence().forEach { field ->
             if (field.startsWith("\$")) return@forEach
-            when (val value = root.opt(field)) {
-                is JSONObject -> {
-                    val ops = value.keys().asSequence().toList()
-                    if (ops.size == 1) {
-                        val opKey = ops.first()
-                        val op = VisualFilterOp.fromWire(opKey)
-                        if (op != null) {
-                            clauses += VisualFilterClause(
-                                field = field,
-                                op = op,
-                                value = stringifyValue(value.opt(opKey), op),
-                            )
-                            return@forEach
-                        }
+            val value = root.opt(field)
+            if (value is JSONObject) {
+                val ops = value.keys().asSequence().toList()
+                if (ops.size == 1) {
+                    val opKey = ops.first()
+                    val op = VisualFilterOp.fromWire(opKey)
+                    if (op != null) {
+                        clauses += VisualFilterClause(
+                            field = field,
+                            op = op,
+                            value = stringifyValue(value.opt(opKey), op),
+                        )
+                        return@forEach
                     }
-                    // Multi-op object or unknown: keep as eq of raw object string.
-                    clauses += VisualFilterClause(field = field, op = VisualFilterOp.Eq, value = value.toString())
                 }
-                else -> {
-                    clauses += VisualFilterClause(
-                        field = field,
-                        op = VisualFilterOp.Eq,
-                        value = stringifyValue(value, VisualFilterOp.Eq),
-                    )
-                }
+                // Multi-op object or unknown: keep as eq of raw object string.
+                clauses += VisualFilterClause(field = field, op = VisualFilterOp.Eq, value = value.toString())
+            } else {
+                clauses += VisualFilterClause(
+                    field = field,
+                    op = VisualFilterOp.Eq,
+                    value = stringifyValue(value, VisualFilterOp.Eq),
+                )
             }
         }
         return clauses

@@ -108,7 +108,7 @@ class OfflineSnapshotStore(context: Context) {
             }
             if (updated == null) throw IllegalArgumentException("快照不存在")
             writeIndex(next)
-            return updated!!
+            return updated
         }
     }
 

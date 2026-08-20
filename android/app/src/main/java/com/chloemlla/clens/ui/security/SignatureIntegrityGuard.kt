@@ -44,6 +44,7 @@ object SignatureIntegrityGuard {
         } else {
             @Suppress("DEPRECATION")
             val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+            @Suppress("DEPRECATION")
             val signatures = info.signatures ?: return null
             if (signatures.isEmpty()) null else sha256(signatures[0].toByteArray())
         }

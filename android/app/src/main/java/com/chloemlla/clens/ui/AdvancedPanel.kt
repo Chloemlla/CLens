@@ -152,7 +152,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
         Button(onClick = viewModel::createUser, enabled = writeEnabled) { Text("创建用户") }
         when {
-            state.detailedUsersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.detailedUsersError ?: ""))
+            state.detailedUsersError != null -> InfoCard(title = "用户列表不可用", lines = listOf(state.detailedUsersError))
             state.detailedUsers.isNotEmpty() -> state.detailedUsers.forEach { user ->
                 InfoCard(title = user.user + "@" + user.db, lines = listOf(user.rolesJson))
                 OutlinedButton(onClick = { viewModel.requestDropUser(user.user) }, enabled = writeEnabled) { Text("删除用户") }
@@ -176,7 +176,7 @@ internal fun AdvancedPanel(state: ClensUiState, viewModel: ClensViewModel) {
         }
         Button(onClick = viewModel::createRole, enabled = writeEnabled) { Text("创建角色") }
         when {
-            state.rolesError != null -> InfoCard(title = "角色列表不可用", lines = listOf(state.rolesError ?: ""))
+            state.rolesError != null -> InfoCard(title = "角色列表不可用", lines = listOf(state.rolesError))
             state.roles.isNotEmpty() -> state.roles.forEach { role ->
                 InfoCard(title = role.role + "@" + role.db, lines = listOf(role.rolesJson, role.privilegesJson))
                 OutlinedButton(onClick = { viewModel.requestDropRole(role.role) }, enabled = writeEnabled) { Text("删除角色") }
